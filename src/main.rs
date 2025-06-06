@@ -1,4 +1,3 @@
-mod tip;
 mod ui;
 
 use ansi_term::{
@@ -12,20 +11,14 @@ use zellij_tile::prelude::actions::Action;
 use zellij_tile::prelude::*;
 use zellij_tile_utils::palette_match;
 
-use tip::utils::get_cached_tip_name;
-use ui::one_line_ui;
-
-// for more of these, copy paste from: https://en.wikipedia.org/wiki/Box-drawing_character
-static ARROW_SEPARATOR: &str = "";
+use ui::render_ui;
 
 #[derive(Default)]
 struct State {
     tabs: Vec<TabInfo>,
+    pipe_name: String,
     tip_name: String,
     mode_info: ModeInfo,
-    text_copy_destination: Option<CopyDestination>,
-    display_system_clipboard_failure: bool,
-    classic_ui: bool,
     base_mode_is_locked: bool,
     max_length: usize,
     overflow_str: String,
@@ -96,11 +89,6 @@ pub fn get_common_modifiers(mut keyvec: Vec<&KeyWithModifier>) -> Vec<KeyModifie
 
 impl ZellijPlugin for State {
     fn load(&mut self, configuration: BTreeMap<String, String>) {
-        self.tip_name = get_cached_tip_name();
-        self.classic_ui = configuration
-            .get("classic")
-            .map(|c| c == "true")
-            .unwrap_or(false);
         self.max_length = configuration
             .get("max_length")
             .and_then(|s| s.parse().ok())
@@ -109,6 +97,10 @@ impl ZellijPlugin for State {
             .get("overflow_str")
             .cloned()
             .unwrap_or_else(|| "...".to_string());
+        self.pipe_name = configuration
+            .get("pipe_name")
+            .cloned()
+            .unwrap_or_else(|| "zjstatus_hints".to_string());
 
         // TODO: The user can't approve/deny permissions because they can't select the pane, I think we need to open a popup or something
         request_permission(&[
@@ -129,60 +121,19 @@ impl ZellijPlugin for State {
 
     fn update(&mut self, event: Event) -> bool {
         let mut should_render = false;
-        match event {
-            Event::ModeUpdate(mode_info) => {
-                if self.mode_info != mode_info {
-                    should_render = true;
-                }
-                self.mode_info = mode_info;
-                self.base_mode_is_locked = self.mode_info.base_mode == Some(InputMode::Locked);
-            }
-            Event::TabUpdate(tabs) => {
-                if self.tabs != tabs {
-                    should_render = true;
-                }
-                self.tabs = tabs;
-            }
-            Event::CopyToClipboard(copy_destination) => {
-                match self.text_copy_destination {
-                    Some(text_copy_destination) => {
-                        if text_copy_destination != copy_destination {
-                            should_render = true;
-                        }
-                    }
-                    None => {
-                        should_render = true;
-                    }
-                }
-                self.text_copy_destination = Some(copy_destination);
-            }
-            Event::SystemClipboardFailure => {
+        if let Event::ModeUpdate(mode_info) = event {
+            if self.mode_info != mode_info {
                 should_render = true;
-                self.display_system_clipboard_failure = true;
             }
-            Event::InputReceived => {
-                if self.text_copy_destination.is_some() || self.display_system_clipboard_failure {
-                    should_render = true;
-                }
-                self.text_copy_destination = None;
-                self.display_system_clipboard_failure = false;
-            }
-            _ => {}
+            self.mode_info = mode_info;
+            self.base_mode_is_locked = self.mode_info.base_mode == Some(InputMode::Locked);
         };
         should_render
     }
 
     fn render(&mut self, _rows: usize, cols: usize) {
-        let supports_arrow_fonts = !self.mode_info.capabilities.arrow_fonts;
-        let separator = if supports_arrow_fonts {
-            ARROW_SEPARATOR
-        } else {
-            ""
-        };
-
         let background = self.mode_info.style.colors.text_unselected.background;
 
-        // Always use single line UI
         let fill_bg = match background {
             PaletteColor::Rgb((r, g, b)) => format!("\u{1b}[48;2;{};{};{}m\u{1b}[0K", r, g, b),
             PaletteColor::EightBit(color) => format!("\u{1b}[48;5;{}m\u{1b}[0K", color),
@@ -191,14 +142,11 @@ impl ZellijPlugin for State {
 
         let output = format!(
             "{}{}",
-            one_line_ui(
+            render_ui(
                 &self.mode_info,
                 active_tab,
                 cols,
-                separator,
                 self.base_mode_is_locked,
-                self.text_copy_destination,
-                self.display_system_clipboard_failure,
                 &self.tip_name,
             ),
             fill_bg,
@@ -219,10 +167,10 @@ impl State {
             } else {
                 message.to_string()
             };
-            pipe_message_to_plugin(
-                MessageToPlugin::new("pipe")
-                    .with_payload(format!("zjstatus::pipe::pipe_zjstatus_hints::{}", output)),
-            );
+            pipe_message_to_plugin(MessageToPlugin::new("pipe").with_payload(format!(
+                "zjstatus::pipe::pipe_{}::{}",
+                self.pipe_name, output
+            )));
         }
     }
 
@@ -449,10 +397,7 @@ pub fn style_description(description: &str, palette: &Styling) -> Vec<ANSIString
 
 pub fn session_manager_key(keymap: &[(KeyWithModifier, Vec<Action>)]) -> Vec<KeyWithModifier> {
     let mut matching = keymap.iter().find_map(|(key, acvec)| {
-        let has_match = acvec
-            .iter()
-            .find(|a| a.launches_plugin("session-manager"))
-            .is_some();
+        let has_match = acvec.iter().any(|a| a.launches_plugin("session-manager"));
         if has_match {
             Some(key.clone())
         } else {
@@ -468,10 +413,7 @@ pub fn session_manager_key(keymap: &[(KeyWithModifier, Vec<Action>)]) -> Vec<Key
 
 pub fn plugin_manager_key(keymap: &[(KeyWithModifier, Vec<Action>)]) -> Vec<KeyWithModifier> {
     let mut matching = keymap.iter().find_map(|(key, acvec)| {
-        let has_match = acvec
-            .iter()
-            .find(|a| a.launches_plugin("plugin-manager"))
-            .is_some();
+        let has_match = acvec.iter().any(|a| a.launches_plugin("plugin-manager"));
         if has_match {
             Some(key.clone())
         } else {
@@ -487,10 +429,7 @@ pub fn plugin_manager_key(keymap: &[(KeyWithModifier, Vec<Action>)]) -> Vec<KeyW
 
 pub fn about_key(keymap: &[(KeyWithModifier, Vec<Action>)]) -> Vec<KeyWithModifier> {
     let mut matching = keymap.iter().find_map(|(key, acvec)| {
-        let has_match = acvec
-            .iter()
-            .find(|a| a.launches_plugin("zellij:about"))
-            .is_some();
+        let has_match = acvec.iter().any(|a| a.launches_plugin("zellij:about"));
         if has_match {
             Some(key.clone())
         } else {
@@ -506,10 +445,7 @@ pub fn about_key(keymap: &[(KeyWithModifier, Vec<Action>)]) -> Vec<KeyWithModifi
 
 pub fn configuration_key(keymap: &[(KeyWithModifier, Vec<Action>)]) -> Vec<KeyWithModifier> {
     let mut matching = keymap.iter().find_map(|(key, acvec)| {
-        let has_match = acvec
-            .iter()
-            .find(|a| a.launches_plugin("configuration"))
-            .is_some();
+        let has_match = acvec.iter().any(|a| a.launches_plugin("configuration"));
         if has_match {
             Some(key.clone())
         } else {

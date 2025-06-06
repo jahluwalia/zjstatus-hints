@@ -11,75 +11,39 @@ use crate::{
     session_manager_key, single_action_key, style_description, to_base_mode, LinePart, TO_NORMAL,
 };
 
-pub fn text_copied_hint(copy_destination: CopyDestination) -> LinePart {
-    let hint = match copy_destination {
-        CopyDestination::Command => "Text piped to external command",
-        #[cfg(not(target_os = "macos"))]
-        CopyDestination::Primary => "Text copied to system primary selection",
-        #[cfg(target_os = "macos")] // primary selection does not exist on macos
-        CopyDestination::Primary => "Text copied to system clipboard",
-        CopyDestination::System => "Text copied to system clipboard",
-    };
-    LinePart {
-        part: serialize_text(&Text::new(&hint).color_range(2, ..).opaque()),
-        len: hint.len(),
-    }
-}
-
-pub fn system_clipboard_error(palette: &Styling) -> LinePart {
-    let hint = " Error using the system clipboard.";
-    let red_color = palette_match!(palette.text_unselected.emphasis_3);
-    LinePart {
-        part: Style::new().fg(red_color).bold().paint(hint).to_string(),
-        len: hint.len(),
-    }
-}
-
-// Single-line UI function showing current mode keybindings with enhanced priority system
-pub fn one_line_ui(
-    help: &ModeInfo,
+pub fn render_ui(
+    mode_info: &ModeInfo,
     tab_info: Option<&TabInfo>,
     max_len: usize,
-    _separator: &str,
     base_mode_is_locked: bool,
-    text_copied_to_clipboard_destination: Option<CopyDestination>,
-    clipboard_failure: bool,
     tip_name: &str,
 ) -> LinePart {
-    // Priority 1: Clipboard messages (highest priority)
-    if let Some(text_copied_to_clipboard_destination) = text_copied_to_clipboard_destination {
-        return text_copied_hint(text_copied_to_clipboard_destination);
-    }
-
-    // Priority 2: System clipboard errors
-    if clipboard_failure {
-        return system_clipboard_error(&help.style.colors);
-    }
-
-    // Priority 3: Special tab states with enhanced messages from original
     if let Some(active_tab) = tab_info {
         if active_tab.is_fullscreen_active {
-            match help.mode {
+            match mode_info.mode {
                 InputMode::Normal => {
-                    return fullscreen_panes_to_hide(&help.style.colors, active_tab.panes_to_hide)
-                }
-                InputMode::Locked => {
-                    return locked_fullscreen_panes_to_hide(
-                        &help.style.colors,
+                    return fullscreen_panes_to_hide(
+                        &mode_info.style.colors,
                         active_tab.panes_to_hide,
                     )
+                }
+                InputMode::Locked => {
+                    return LinePart {
+                        part: String::new(),
+                        len: 0,
+                    };
                 }
                 _ => {
                     // For other modes, show simple fullscreen indicator and continue to keybindings
                     if max_len > 20 {
-                        let mut result = show_mode_keybindings(help, max_len - 15);
+                        let mut result = show_mode_keybindings(mode_info, max_len - 15);
                         if result.len > 0 {
                             result.part = format!(" (FULLSCREEN) {}", result.part.trim_start());
                             result.len += 14; // " (FULLSCREEN) "
                         } else {
                             let text = " (FULLSCREEN) ";
                             let orange_color =
-                                palette_match!(help.style.colors.text_unselected.emphasis_0);
+                                palette_match!(mode_info.style.colors.text_unselected.emphasis_0);
                             result = LinePart {
                                 part: Style::new().fg(orange_color).bold().paint(text).to_string(),
                                 len: text.len(),
@@ -92,20 +56,25 @@ pub fn one_line_ui(
         }
 
         if active_tab.are_floating_panes_visible {
-            match help.mode {
-                InputMode::Normal => return floating_panes_are_visible(help),
-                InputMode::Locked => return locked_floating_panes_are_visible(&help.style.colors),
+            match mode_info.mode {
+                InputMode::Normal => return floating_panes_are_visible(mode_info),
+                InputMode::Locked => {
+                    return LinePart {
+                        part: String::new(),
+                        len: 0,
+                    }
+                }
                 _ => {
                     // For other modes, show simple floating panes indicator and continue to keybindings
                     if max_len > 25 {
-                        let mut result = show_mode_keybindings(help, max_len - 20);
+                        let mut result = show_mode_keybindings(mode_info, max_len - 20);
                         if result.len > 0 {
                             result.part = format!(" (FLOATING PANES) {}", result.part.trim_start());
                             result.len += 19; // " (FLOATING PANES) "
                         } else {
                             let text = " (FLOATING PANES) ";
                             let orange_color =
-                                palette_match!(help.style.colors.text_unselected.emphasis_0);
+                                palette_match!(mode_info.style.colors.text_unselected.emphasis_0);
                             result = LinePart {
                                 part: Style::new().fg(orange_color).bold().paint(text).to_string(),
                                 len: text.len(),
@@ -119,12 +88,12 @@ pub fn one_line_ui(
     }
 
     // Priority 4: Show current mode keybindings with tips from original system
-    match help.mode {
+    match mode_info.mode {
         InputMode::Locked if base_mode_is_locked => LinePart {
             part: String::new(),
             len: 0,
         },
-        _ => show_enhanced_mode_keybindings(help, max_len, tip_name),
+        _ => show_enhanced_mode_keybindings(mode_info, max_len, tip_name),
     }
 }
 
@@ -445,20 +414,6 @@ pub fn floating_panes_are_visible(mode_info: &ModeInfo) -> LinePart {
             Style::new().fg(white_color).bold().paint(to_hide),
         ),
         len,
-    }
-}
-
-pub fn locked_fullscreen_panes_to_hide(palette: &Styling, panes_to_hide: usize) -> LinePart {
-    LinePart {
-        part: String::new(),
-        len: 0,
-    }
-}
-
-pub fn locked_floating_panes_are_visible(palette: &Styling) -> LinePart {
-    LinePart {
-        part: String::new(),
-        len: 0,
     }
 }
 
