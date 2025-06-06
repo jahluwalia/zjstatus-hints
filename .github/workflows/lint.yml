@@ -22,5 +22,5 @@ jobs:
       - name: Run Clippy
         uses: clechasseur/rs-clippy-check@24d66924f748522acf015e8642b7fb8cd81b4dbc # v3
         with:
-          args: --all-features --lib
+          args: --all-features --target=wasm32-wasip1
           toolchain: "1.84.0"
