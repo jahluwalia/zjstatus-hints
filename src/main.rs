@@ -51,7 +51,6 @@ impl ZellijPlugin for State {
             .cloned()
             .unwrap_or_else(|| "zjstatus_hints".to_string());
 
-        // TODO: The user can't approve/deny permissions because they can't select the pane, I think we need to open a popup or something
         request_permission(&[
             PermissionType::ReadApplicationState,
             PermissionType::MessageAndLaunchOtherPlugins,
