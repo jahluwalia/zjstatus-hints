@@ -1,15 +1,19 @@
-mod ui;
 mod tip;
+mod ui;
 
-use ansi_term::{ANSIString, Style, Colour::{Fixed, RGB}};
+use ansi_term::{
+    ANSIString,
+    Colour::{Fixed, RGB},
+    Style,
+};
 use std::collections::BTreeMap;
 use std::fmt::{Display, Error, Formatter};
-use zellij_tile::prelude::*;
 use zellij_tile::prelude::actions::Action;
+use zellij_tile::prelude::*;
 use zellij_tile_utils::{palette_match, style};
 
-use ui::one_line_ui;
 use tip::utils::get_cached_tip_name;
+use ui::one_line_ui;
 
 // for more of these, copy paste from: https://en.wikipedia.org/wiki/Box-drawing_character
 static ARROW_SEPARATOR: &str = "";
@@ -187,7 +191,6 @@ pub fn get_common_modifiers(mut keyvec: Vec<&KeyWithModifier>) -> Vec<KeyModifie
     common_modifiers.into_iter().collect()
 }
 
-
 impl ZellijPlugin for State {
     fn load(&mut self, configuration: BTreeMap<String, String>) {
         self.tip_name = get_cached_tip_name();
@@ -361,25 +364,7 @@ pub fn single_action_key(
     }
 }
 
-/// Style a vector of [`Key`]s with the given [`Palette`].
-///
-/// Creates a line segment of style `<KEYS>`, with correct theming applied: The brackets have the
-/// regular text color, the enclosed keys are painted green and bold. If the keys share a common
-/// modifier (See [`get_common_modifier`]), it is printed in front of the keys, painted green and
-/// bold, separated with a `+`: `MOD + <KEYS>`.
-///
-/// If multiple [`Key`]s are given, the individual keys are separated with a `|` char. This does
-/// not apply to the following groups of keys which are treated specially and don't have a
-/// separator between them:
-///
-/// - "hjkl"
-/// - "HJKL"
-/// - "←↓↑→"
-/// - "←→"
-/// - "↓↑"
-///
-/// The returned Vector of [`ANSIString`] is suitable for transformation into an [`ANSIStrings`]
-/// type.
+/// Style a keybinding hint with saturated background for keys and less saturated for description
 pub fn style_key_with_modifier(
     keyvec: &[KeyWithModifier],
     palette: &Styling,
@@ -389,54 +374,23 @@ pub fn style_key_with_modifier(
         return vec![];
     }
 
-    let text_color = palette_match!(palette.text_unselected.base);
-    let green_color = palette_match!(palette.text_unselected.emphasis_2);
-    let orange_color = palette_match!(palette.text_unselected.emphasis_0);
+    let saturated_bg = palette_match!(palette.ribbon_unselected.background);
+    let contrasting_fg = palette_match!(palette.ribbon_unselected.base);
     let mut ret = vec![];
 
     let common_modifiers = get_common_modifiers(keyvec.iter().collect());
 
-    let no_common_modifier = common_modifiers.is_empty();
     let modifier_str = common_modifiers
         .iter()
         .map(|m| m.to_string())
         .collect::<Vec<_>>()
         .join("-");
-    let painted_modifier = if modifier_str.is_empty() {
-        Style::new().paint("")
-    } else {
-        if let Some(background) = background {
-            let background = palette_match!(background);
-            Style::new()
-                .fg(orange_color)
-                .on(background)
-                .bold()
-                .paint(modifier_str)
-        } else {
-            Style::new().fg(orange_color).bold().paint(modifier_str)
-        }
-    };
-    ret.push(painted_modifier);
 
-    // Prints key group start
-    let group_start_str = if no_common_modifier { "<" } else { " + <" };
-    if let Some(background) = background {
-        let background = palette_match!(background);
-        ret.push(
-            Style::new()
-                .fg(text_color)
-                .on(background)
-                .paint(group_start_str),
-        );
-    } else {
-        ret.push(Style::new().fg(text_color).paint(group_start_str));
-    }
-
-    // Prints the keys
-    let key = keyvec
+    // Create key display without brackets
+    let key_display = keyvec
         .iter()
         .map(|key| {
-            if no_common_modifier {
+            if common_modifiers.is_empty() {
                 format!("{}", key)
             } else {
                 let key_modifier_for_key = key
@@ -456,7 +410,7 @@ pub fn style_key_with_modifier(
         .collect::<Vec<String>>();
 
     // Special handling of some pre-defined keygroups
-    let key_string = key.join("");
+    let key_string = key_display.join("");
     let key_separator = match &key_string[..] {
         "HJKL" => "",
         "hjkl" => "",
@@ -467,46 +421,54 @@ pub fn style_key_with_modifier(
         _ => "|",
     };
 
-    for (idx, key) in key.iter().enumerate() {
-        if idx > 0 && !key_separator.is_empty() {
-            if let Some(background) = background {
-                let background = palette_match!(background);
-                ret.push(
-                    Style::new()
-                        .fg(text_color)
-                        .on(background)
-                        .paint(key_separator),
-                );
-            } else {
-                ret.push(Style::new().fg(text_color).paint(key_separator));
-            }
-        }
-        if let Some(background) = background {
-            let background = palette_match!(background);
-            ret.push(
-                Style::new()
-                    .fg(green_color)
-                    .on(background)
-                    .bold()
-                    .paint(key.clone()),
-            );
-        } else {
-            ret.push(Style::new().fg(green_color).bold().paint(key.clone()));
-        }
-    }
+    // Add space before keybinding segment
+    ret.push(Style::new().paint(" "));
 
-    let group_end_str = ">";
-    if let Some(background) = background {
-        let background = palette_match!(background);
+    // Add modifier if present with plus
+    if !modifier_str.is_empty() {
         ret.push(
             Style::new()
-                .fg(text_color)
-                .on(background)
-                .paint(group_end_str),
+                .fg(contrasting_fg)
+                .on(saturated_bg)
+                .bold()
+                .paint(format!(" {} + ", modifier_str)),
         );
     } else {
-        ret.push(Style::new().fg(text_color).paint(group_end_str));
+        ret.push(Style::new().fg(contrasting_fg).on(saturated_bg).paint(" "));
     }
 
+    // Add keys without brackets
+    for (idx, key) in key_display.iter().enumerate() {
+        if idx > 0 && !key_separator.is_empty() {
+            ret.push(
+                Style::new()
+                    .fg(contrasting_fg)
+                    .on(saturated_bg)
+                    .paint(key_separator),
+            );
+        }
+        ret.push(
+            Style::new()
+                .fg(contrasting_fg)
+                .on(saturated_bg)
+                .bold()
+                .paint(key.clone()),
+        );
+    }
+
+    // Close keybinding segment with space
+    ret.push(Style::new().fg(contrasting_fg).on(saturated_bg).paint(" "));
+
     ret
+}
+
+/// Style a description with less saturated background
+pub fn style_description(description: &str, palette: &Styling) -> Vec<ANSIString<'static>> {
+    let less_saturated_bg = palette_match!(palette.text_unselected.background);
+    let contrasting_fg = palette_match!(palette.text_unselected.base);
+
+    vec![Style::new()
+        .fg(contrasting_fg)
+        .on(less_saturated_bg)
+        .paint(format!(" {} ", description))]
 }

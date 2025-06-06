@@ -15,11 +15,12 @@ Transform a complex multi-line zellij status bar plugin into a simplified single
 - Eliminates unnecessary UI complexity while preserving essential functionality
 
 ### User Experience Vision
-Provide users with an immediate reference showing `<key>:action` mappings for:
+Provide users with an immediate reference showing segmented `{keybinding} {description}` format:
+- **Visual Format**: Saturated background segments for keybindings, less saturated segments for descriptions
 - **Normal mode**: Mode-switching keys (pane, tab, resize, move, scroll, search, session, quit)
 - **Other modes**: Mode-specific operations plus return to normal
 - **Special states**: Enhanced priority messages for clipboard operations, errors, fullscreen, floating panes
-- **Visual consistency**: Color-coded keys and modifiers matching original theme system
+- **Modern styling**: Segmented backgrounds with contrasting text, no brackets or colons
 
 ## Technical Implementation
 
@@ -69,37 +70,38 @@ pipe_message_to_plugin(
    - Locked interface variants: `-- INTERFACE LOCKED --` with appropriate state info
 4. **Default**: Enhanced mode-specific keybinding hints with color-coded keys
 
-### Enhanced Visual System
+### Modern Segmented Visual System
 
-#### Color Coding
-- **Orange**: Key modifiers (Ctrl, Alt) and status indicators (FULLSCREEN, FLOATING PANES)
-- **Green**: Individual keys and numeric values
-- **Regular text**: Brackets, separators, and descriptive text
-- **Red**: Error states (clipboard failures)
-- **Dimmed/Italic**: Disabled states
+#### Segmented Background Styling
+- **Keybinding Segments**: Saturated background (`palette.ribbon_unselected.background`) with contrasting foreground
+- **Description Segments**: Less saturated background (`palette.text_unselected.background`) with contrasting foreground
+- **No Brackets**: Keys displayed directly without `<>` wrapping
+- **No Colons**: Descriptions follow keybindings without `:` separators
+- **Clean Separation**: Visual separation through background color contrast
 
-#### Key Display Intelligence
-- **Common Modifiers**: `Ctrl + <p|t|r>` format when keys share modifiers
-- **Special Groups**: `<hjkl>`, `<←↓↑→>` displayed without separators
-- **Mixed Modifiers**: `<Alt a|Ctrl b|c>` when keys have different modifiers
+#### Enhanced Key Display Intelligence
+- **Common Modifiers**: `Ctrl + p|t|r` format when keys share modifiers (no brackets)
+- **Special Groups**: `hjkl`, `←↓↑→` displayed without separators in single segment
+- **Mixed Modifiers**: `Alt a|Ctrl b|c` when keys have different modifiers (no brackets)
+- **Segmented Layout**: Each `{keybinding} {description}` pair forms distinct visual units
 
 ### Dynamic Keybinding Detection
 
 The plugin intelligently reads the user's actual zellij keybinding configuration and displays only bound keys:
 
 #### Normal Mode Display
-Shows available mode-switching keys with enhanced color coding:
+Shows available mode-switching keys with modern segmented styling:
 ```
-<Ctrl+p>:pane <Ctrl+t>:tab <Ctrl+r>:resize <Ctrl+h>:move <Ctrl+s>:scroll <Ctrl+/>:search <Ctrl+o>:session <Ctrl+q>:quit
+{Ctrl+p} {pane} {Ctrl+t} {tab} {Ctrl+r} {resize} {Ctrl+h} {move} {Ctrl+s} {scroll} {Ctrl+/} {search} {Ctrl+o} {session} {Ctrl+q} {quit}
 ```
 
 #### Enhanced Mode-Specific Display
-Each mode shows comprehensive operations with original action set:
-- **Pane**: `<n>:new <x>:close <f>:fullscreen <w>:floating <e>:embed <Enter>:normal`
-- **Tab**: `<n>:new <x>:close <h>:prev <l>:next <b>:break pane <Enter>:normal`
-- **Resize**: `<+>:+ <->:- <Enter>:normal`
-- **Scroll**: `</>:search <j>:down <k>:up <d>:page down <u>:page up <e>:edit <Enter>:normal`
-- **Search**: `</>:search <n>:next <N>:prev <Enter>:normal`
+Each mode shows comprehensive operations with segmented background styling:
+- **Pane**: `{n} {new} {x} {close} {f} {fullscreen} {w} {floating} {e} {embed} {Enter} {select}`
+- **Tab**: `{n} {new} {x} {close} {h} {prev} {l} {next} {b} {break pane} {Enter} {select}`
+- **Resize**: `{+} {increase} {-} {decrease} {Enter} {select}`
+- **Scroll**: `{/} {search} {j} {scroll} {d} {page} {u} {half page} {e} {edit} {Enter} {select}`
+- **Search**: `{/} {search} {n} {down} {N} {up} {Enter} {select}`
 
 ## Build Process
 
@@ -136,7 +138,8 @@ This infrastructure could be re-integrated if sentence-based tips are desired in
 Key helper functions restored and enhanced from original implementation:
 - `action_key()`: Find keys bound to specific actions
 - `action_key_group()`: Find keys for action groups  
-- `style_key_with_modifier()`: Full original implementation with palette-based theming
+- `style_key_with_modifier()`: Modern segmented styling with saturated backgrounds for keybindings
+- `style_description()`: Segmented styling with less saturated backgrounds for descriptions
 - `get_common_modifiers()`: Detect shared modifiers across key groups
 - `color_elements()`: Generate complete color theming system
 - Priority display functions: `fullscreen_panes_to_hide()`, `floating_panes_are_visible()`, etc.
@@ -156,20 +159,28 @@ Key helper functions restored and enhanced from original implementation:
 
 ## Recent Enhancements (Latest Update)
 
-### Visual Fidelity Restoration
-- **Complete Color System**: Integrated original `ColoredElements` and `SegmentStyle` structures
-- **Palette Integration**: Uses zellij's theme system for consistent colors across different themes
-- **Enhanced Key Styling**: Restored sophisticated key grouping and modifier handling
+### Modern Segmented Styling Implementation
+- **Segmented Background System**: Completely redesigned visual styling with contrasting background segments
+- **Removed Legacy Elements**: Eliminated `<>` brackets and `:` separators for cleaner appearance
+- **Dual Background Colors**: Saturated backgrounds for keybindings, less saturated for descriptions
+- **Enhanced Readability**: Clear visual separation through background color contrast instead of punctuation
 
-### Priority System Enhancement
-- **Rich Context Messages**: Fullscreen and floating pane states show detailed, actionable information
-- **Intelligent State Handling**: Different behavior for Normal/Locked vs other modes
-- **Visual Consistency**: Maintains original color coding and formatting
+### Styling Function Modernization
+- **style_key_with_modifier()**: Redesigned to create saturated background segments for keybindings
+- **style_description()**: New function creating less saturated background segments for action descriptions
+- **Palette Integration**: Uses zellij's theme system with `ribbon_unselected` and `text_unselected` palettes
+- **Format Consistency**: All hints follow `{keybinding} {description}` segmented pattern
 
-### Expanded Action Coverage
-- **Comprehensive Mode Support**: All modes now show relevant actions from original implementation
+### Visual Experience Enhancement
+- **Modern UI Paradigm**: Adopts contemporary segmented styling approach similar to modern status bars
+- **Improved Contrast**: Better text readability through background/foreground color optimization
+- **Consistent Spacing**: Uniform padding within each segment for visual balance
+- **Theme Compatibility**: Automatically adapts to different zellij color themes
+
+### Comprehensive Mode Coverage
+- **All Input Modes**: Complete keybinding coverage across Normal, Pane, Tab, Resize, Move, Scroll, Search, Session modes
 - **Enhanced Pane Actions**: Includes fullscreen, floating, embed operations with proper key detection
-- **Tab Operations**: Added navigation (prev/next) and break pane functionality
-- **Scroll Enhancements**: Complete scroll mode with search, paging, and edit operations
+- **Advanced Operations**: Tab navigation, break pane, sync, rename functionality
+- **Scroll/Search Integration**: Complete scroll mode with search, paging, and edit operations
 
-The plugin now provides the full visual experience of the original while maintaining the streamlined single-line architecture optimized for zjstatus integration.
+The plugin now provides a modern, visually clean interface while maintaining the comprehensive functionality and intelligent keybinding detection of the original implementation, optimized for zjstatus integration.

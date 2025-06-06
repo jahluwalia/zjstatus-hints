@@ -6,7 +6,9 @@ use zellij_tile::prelude::actions::Action;
 use zellij_tile::prelude::*;
 use zellij_tile_utils::palette_match;
 
-use crate::{action_key, action_key_group, single_action_key, LinePart, TO_NORMAL};
+use crate::{
+    action_key, action_key_group, single_action_key, style_description, LinePart, TO_NORMAL,
+};
 
 pub fn text_copied_hint(copy_destination: CopyDestination) -> LinePart {
     let hint = match copy_destination {
@@ -150,7 +152,8 @@ fn show_mode_keybindings(help: &ModeInfo, max_len: usize) -> LinePart {
                 if !keys.is_empty() {
                     let styled_keys = style_key_with_modifier(&keys, &help.style.colors, None);
                     parts.extend(styled_keys);
-                    parts.push(Style::new().paint(format!(":{} ", label)));
+                    let styled_desc = style_description(label, &help.style.colors);
+                    parts.extend(styled_desc);
                 }
             }
         }
@@ -168,7 +171,8 @@ fn show_mode_keybindings(help: &ModeInfo, max_len: usize) -> LinePart {
                 if !keys.is_empty() {
                     let styled_keys = style_key_with_modifier(&keys, &help.style.colors, None);
                     parts.extend(styled_keys);
-                    parts.push(Style::new().paint(format!(":{} ", label)));
+                    let styled_desc = style_description(label, &help.style.colors);
+                    parts.extend(styled_desc);
                 }
             }
         }
@@ -185,7 +189,7 @@ fn show_mode_keybindings(help: &ModeInfo, max_len: usize) -> LinePart {
                 if !keys.is_empty() {
                     let styled_keys = style_key_with_modifier(&keys, &help.style.colors, None);
                     parts.extend(styled_keys);
-                    parts.push(Style::new().paint(format!(":{} ", label)));
+                    parts.push(Style::new().paint(format!(" {} ", label)));
                 }
             }
         }
@@ -202,7 +206,7 @@ fn show_mode_keybindings(help: &ModeInfo, max_len: usize) -> LinePart {
                 if !keys.is_empty() {
                     let styled_keys = style_key_with_modifier(&keys, &help.style.colors, None);
                     parts.extend(styled_keys);
-                    parts.push(Style::new().paint(format!(":{} ", label)));
+                    parts.push(Style::new().paint(format!(" {} ", label)));
                 }
             }
         }
@@ -218,7 +222,7 @@ fn show_mode_keybindings(help: &ModeInfo, max_len: usize) -> LinePart {
                 if !keys.is_empty() {
                     let styled_keys = style_key_with_modifier(&keys, &help.style.colors, None);
                     parts.extend(styled_keys);
-                    parts.push(Style::new().paint(format!(":{} ", label)));
+                    parts.push(Style::new().paint(format!(" {} ", label)));
                 }
             }
         }
@@ -235,7 +239,7 @@ fn show_mode_keybindings(help: &ModeInfo, max_len: usize) -> LinePart {
                 if !keys.is_empty() {
                     let styled_keys = style_key_with_modifier(&keys, &help.style.colors, None);
                     parts.extend(styled_keys);
-                    parts.push(Style::new().paint(format!(":{} ", label)));
+                    parts.push(Style::new().paint(format!(" {} ", label)));
                 }
             }
         }
@@ -252,19 +256,20 @@ fn show_mode_keybindings(help: &ModeInfo, max_len: usize) -> LinePart {
                 if !keys.is_empty() {
                     let styled_keys = style_key_with_modifier(&keys, &help.style.colors, None);
                     parts.extend(styled_keys);
-                    parts.push(Style::new().paint(format!(":{} ", label)));
+                    parts.push(Style::new().paint(format!(" {} ", label)));
                 }
             }
         }
         InputMode::Session => {
-            // Use original implementation pattern for session operations  
+            // Use original implementation pattern for session operations
             let detach_keys = action_key(&keymap, &[Action::Detach]);
             if !detach_keys.is_empty() {
                 let styled_keys = style_key_with_modifier(&detach_keys, &help.style.colors, None);
                 parts.extend(styled_keys);
-                parts.push(Style::new().paint(":detach "));
+                let styled_desc = style_description("detach", &help.style.colors);
+                parts.extend(styled_desc);
             }
-            
+
             // Select pane (return to normal)
             let to_normal_keys = action_key(&keymap, &[TO_NORMAL]);
             let select_key = if to_normal_keys.contains(&KeyWithModifier::new(BareKey::Enter)) {
@@ -275,7 +280,8 @@ fn show_mode_keybindings(help: &ModeInfo, max_len: usize) -> LinePart {
             if !select_key.is_empty() {
                 let styled_keys = style_key_with_modifier(&select_key, &help.style.colors, None);
                 parts.extend(styled_keys);
-                parts.push(Style::new().paint(":select "));
+                let styled_desc = style_description("select", &help.style.colors);
+                parts.extend(styled_desc);
             }
         }
         _ => {
@@ -284,7 +290,8 @@ fn show_mode_keybindings(help: &ModeInfo, max_len: usize) -> LinePart {
             if !keys.is_empty() {
                 let styled_keys = style_key_with_modifier(&keys, &help.style.colors, None);
                 parts.extend(styled_keys);
-                parts.push(Style::new().paint(":normal "));
+                let styled_desc = style_description("normal", &help.style.colors);
+                parts.extend(styled_desc);
             }
         }
     }
@@ -299,8 +306,8 @@ fn show_mode_keybindings(help: &ModeInfo, max_len: usize) -> LinePart {
     // Build the final string and calculate length
     use ansi_term::{unstyled_len, ANSIStrings};
     let ansi_strings = ANSIStrings(&parts);
-    let formatted = format!(" {}", ansi_strings);
-    let len = 1 + unstyled_len(&ansi_strings);
+    let formatted = format!("{}", ansi_strings);
+    let len = unstyled_len(&ansi_strings);
 
     if len <= max_len {
         LinePart {
@@ -438,7 +445,7 @@ fn show_enhanced_mode_keybindings(help: &ModeInfo, max_len: usize, _tip_name: &s
             // Show mode-switching keys from normal mode with more descriptive labels
             let keybindings = [
                 (Action::SwitchToMode(InputMode::Pane), "pane"),
-                (Action::SwitchToMode(InputMode::Tab), "tab"), 
+                (Action::SwitchToMode(InputMode::Tab), "tab"),
                 (Action::SwitchToMode(InputMode::Resize), "resize"),
                 (Action::SwitchToMode(InputMode::Move), "move"),
                 (Action::SwitchToMode(InputMode::Scroll), "scroll"),
@@ -446,13 +453,13 @@ fn show_enhanced_mode_keybindings(help: &ModeInfo, max_len: usize, _tip_name: &s
                 (Action::SwitchToMode(InputMode::Session), "session"),
                 (Action::Quit, "quit"),
             ];
-            
+
             for (action, label) in keybindings {
                 let keys = action_key(&keymap, &[action]);
                 if !keys.is_empty() {
                     let styled_keys = style_key_with_modifier(&keys, &help.style.colors, None);
                     parts.extend(styled_keys);
-                    parts.push(Style::new().paint(format!(":{} ", label)));
+                    parts.push(Style::new().paint(format!(" {} ", label)));
                 }
             }
         }
@@ -461,30 +468,52 @@ fn show_enhanced_mode_keybindings(help: &ModeInfo, max_len: usize, _tip_name: &s
             let pane_actions = [
                 (&[Action::NewPane(None, None, false), TO_NORMAL][..], "new"),
                 (&[Action::CloseFocus, TO_NORMAL][..], "close"),
-                (&[Action::ToggleFocusFullscreen, TO_NORMAL][..], "fullscreen"),
+                (
+                    &[Action::ToggleFocusFullscreen, TO_NORMAL][..],
+                    "fullscreen",
+                ),
                 (&[Action::ToggleFloatingPanes, TO_NORMAL][..], "floating"),
                 (&[Action::TogglePaneEmbedOrFloating, TO_NORMAL][..], "embed"),
-                (&[Action::NewPane(Some(Direction::Right), None, false), TO_NORMAL][..], "split right"),
-                (&[Action::NewPane(Some(Direction::Down), None, false), TO_NORMAL][..], "split down"),
+                (
+                    &[
+                        Action::NewPane(Some(Direction::Right), None, false),
+                        TO_NORMAL,
+                    ][..],
+                    "split right",
+                ),
+                (
+                    &[
+                        Action::NewPane(Some(Direction::Down), None, false),
+                        TO_NORMAL,
+                    ][..],
+                    "split down",
+                ),
             ];
-            
+
             for (actions, label) in pane_actions {
                 let keys = single_action_key(&keymap, actions);
                 if !keys.is_empty() {
                     let styled_keys = style_key_with_modifier(&keys, &help.style.colors, None);
                     parts.extend(styled_keys);
-                    parts.push(Style::new().paint(format!(":{} ", label)));
+                    parts.push(Style::new().paint(format!(" {} ", label)));
                 }
             }
-            
+
             // Rename uses a different pattern (SwitchToMode + PaneNameInput)
-            let rename_keys = single_action_key(&keymap, &[Action::SwitchToMode(InputMode::RenamePane), Action::PaneNameInput(vec![0])]);
+            let rename_keys = single_action_key(
+                &keymap,
+                &[
+                    Action::SwitchToMode(InputMode::RenamePane),
+                    Action::PaneNameInput(vec![0]),
+                ],
+            );
             if !rename_keys.is_empty() {
                 let styled_keys = style_key_with_modifier(&rename_keys, &help.style.colors, None);
                 parts.extend(styled_keys);
-                parts.push(Style::new().paint(":rename "));
+                let styled_desc = style_description("rename", &help.style.colors);
+                parts.extend(styled_desc);
             }
-            
+
             // Focus movement keys (hjkl or arrow keys)
             let focus_keys = action_key_group(
                 &keymap,
@@ -498,9 +527,10 @@ fn show_enhanced_mode_keybindings(help: &ModeInfo, max_len: usize, _tip_name: &s
             if !focus_keys.is_empty() {
                 let styled_keys = style_key_with_modifier(&focus_keys, &help.style.colors, None);
                 parts.extend(styled_keys);
-                parts.push(Style::new().paint(":move "));
+                let styled_desc = style_description("move", &help.style.colors);
+                parts.extend(styled_desc);
             }
-            
+
             // Select pane (return to normal) - find preferred Enter key
             let to_normal_keys = action_key(&keymap, &[TO_NORMAL]);
             let select_key = if to_normal_keys.contains(&KeyWithModifier::new(BareKey::Enter)) {
@@ -511,49 +541,71 @@ fn show_enhanced_mode_keybindings(help: &ModeInfo, max_len: usize, _tip_name: &s
             if !select_key.is_empty() {
                 let styled_keys = style_key_with_modifier(&select_key, &help.style.colors, None);
                 parts.extend(styled_keys);
-                parts.push(Style::new().paint(":select "));
+                let styled_desc = style_description("select", &help.style.colors);
+                parts.extend(styled_desc);
             }
         }
         InputMode::Tab => {
             // Use original implementation pattern for tab operations
             let tab_actions = [
-                (&[Action::NewTab(None, vec![], None, None, None, true), TO_NORMAL][..], "new"),
+                (
+                    &[
+                        Action::NewTab(None, vec![], None, None, None, true),
+                        TO_NORMAL,
+                    ][..],
+                    "new",
+                ),
                 (&[Action::CloseTab, TO_NORMAL][..], "close"),
                 (&[Action::BreakPane, TO_NORMAL][..], "break pane"),
                 (&[Action::ToggleActiveSyncTab, TO_NORMAL][..], "sync"),
             ];
-            
+
             for (actions, label) in tab_actions {
                 let keys = single_action_key(&keymap, actions);
                 if !keys.is_empty() {
                     let styled_keys = style_key_with_modifier(&keys, &help.style.colors, None);
                     parts.extend(styled_keys);
-                    parts.push(Style::new().paint(format!(":{} ", label)));
+                    parts.push(Style::new().paint(format!(" {} ", label)));
                 }
             }
-            
+
             // Rename uses different pattern
-            let rename_keys = single_action_key(&keymap, &[Action::SwitchToMode(InputMode::RenameTab), Action::TabNameInput(vec![0])]);
+            let rename_keys = single_action_key(
+                &keymap,
+                &[
+                    Action::SwitchToMode(InputMode::RenameTab),
+                    Action::TabNameInput(vec![0]),
+                ],
+            );
             if !rename_keys.is_empty() {
                 let styled_keys = style_key_with_modifier(&rename_keys, &help.style.colors, None);
                 parts.extend(styled_keys);
-                parts.push(Style::new().paint(":rename "));
+                let styled_desc = style_description("rename", &help.style.colors);
+                parts.extend(styled_desc);
             }
-            
+
             // Focus movement - special handling like original
-            let focus_keys_full = action_key_group(&keymap, &[&[Action::GoToPreviousTab], &[Action::GoToNextTab]]);
+            let focus_keys_full = action_key_group(
+                &keymap,
+                &[&[Action::GoToPreviousTab], &[Action::GoToNextTab]],
+            );
             let focus_keys = if focus_keys_full.contains(&KeyWithModifier::new(BareKey::Left))
-                && focus_keys_full.contains(&KeyWithModifier::new(BareKey::Right)) {
-                vec![KeyWithModifier::new(BareKey::Left), KeyWithModifier::new(BareKey::Right)]
+                && focus_keys_full.contains(&KeyWithModifier::new(BareKey::Right))
+            {
+                vec![
+                    KeyWithModifier::new(BareKey::Left),
+                    KeyWithModifier::new(BareKey::Right),
+                ]
             } else {
                 focus_keys_full
             };
             if !focus_keys.is_empty() {
                 let styled_keys = style_key_with_modifier(&focus_keys, &help.style.colors, None);
                 parts.extend(styled_keys);
-                parts.push(Style::new().paint(":move "));
+                let styled_desc = style_description("move", &help.style.colors);
+                parts.extend(styled_desc);
             }
-            
+
             // Select pane (return to normal)
             let to_normal_keys = action_key(&keymap, &[TO_NORMAL]);
             let select_key = if to_normal_keys.contains(&KeyWithModifier::new(BareKey::Enter)) {
@@ -564,47 +616,62 @@ fn show_enhanced_mode_keybindings(help: &ModeInfo, max_len: usize, _tip_name: &s
             if !select_key.is_empty() {
                 let styled_keys = style_key_with_modifier(&select_key, &help.style.colors, None);
                 parts.extend(styled_keys);
-                parts.push(Style::new().paint(":select "));
+                let styled_desc = style_description("select", &help.style.colors);
+                parts.extend(styled_desc);
             }
         }
         InputMode::Resize => {
             // Use original implementation pattern for resize operations
-            let resize_keys = action_key_group(&keymap, &[
-                &[Action::Resize(Resize::Increase, None)],
-                &[Action::Resize(Resize::Decrease, None)]
-            ]);
+            let resize_keys = action_key_group(
+                &keymap,
+                &[
+                    &[Action::Resize(Resize::Increase, None)],
+                    &[Action::Resize(Resize::Decrease, None)],
+                ],
+            );
             if !resize_keys.is_empty() {
                 let styled_keys = style_key_with_modifier(&resize_keys, &help.style.colors, None);
                 parts.extend(styled_keys);
-                parts.push(Style::new().paint(":resize "));
+                let styled_desc = style_description("resize", &help.style.colors);
+                parts.extend(styled_desc);
             }
-            
+
             // Directional resize increase
-            let resize_increase_keys = action_key_group(&keymap, &[
-                &[Action::Resize(Resize::Increase, Some(Direction::Left))],
-                &[Action::Resize(Resize::Increase, Some(Direction::Down))],
-                &[Action::Resize(Resize::Increase, Some(Direction::Up))],
-                &[Action::Resize(Resize::Increase, Some(Direction::Right))]
-            ]);
+            let resize_increase_keys = action_key_group(
+                &keymap,
+                &[
+                    &[Action::Resize(Resize::Increase, Some(Direction::Left))],
+                    &[Action::Resize(Resize::Increase, Some(Direction::Down))],
+                    &[Action::Resize(Resize::Increase, Some(Direction::Up))],
+                    &[Action::Resize(Resize::Increase, Some(Direction::Right))],
+                ],
+            );
             if !resize_increase_keys.is_empty() {
-                let styled_keys = style_key_with_modifier(&resize_increase_keys, &help.style.colors, None);
+                let styled_keys =
+                    style_key_with_modifier(&resize_increase_keys, &help.style.colors, None);
                 parts.extend(styled_keys);
-                parts.push(Style::new().paint(":increase "));
+                let styled_desc = style_description("increase", &help.style.colors);
+                parts.extend(styled_desc);
             }
-            
-            // Directional resize decrease  
-            let resize_decrease_keys = action_key_group(&keymap, &[
-                &[Action::Resize(Resize::Decrease, Some(Direction::Left))],
-                &[Action::Resize(Resize::Decrease, Some(Direction::Down))],
-                &[Action::Resize(Resize::Decrease, Some(Direction::Up))],
-                &[Action::Resize(Resize::Decrease, Some(Direction::Right))]
-            ]);
+
+            // Directional resize decrease
+            let resize_decrease_keys = action_key_group(
+                &keymap,
+                &[
+                    &[Action::Resize(Resize::Decrease, Some(Direction::Left))],
+                    &[Action::Resize(Resize::Decrease, Some(Direction::Down))],
+                    &[Action::Resize(Resize::Decrease, Some(Direction::Up))],
+                    &[Action::Resize(Resize::Decrease, Some(Direction::Right))],
+                ],
+            );
             if !resize_decrease_keys.is_empty() {
-                let styled_keys = style_key_with_modifier(&resize_decrease_keys, &help.style.colors, None);
+                let styled_keys =
+                    style_key_with_modifier(&resize_decrease_keys, &help.style.colors, None);
                 parts.extend(styled_keys);
-                parts.push(Style::new().paint(":decrease "));
+                let styled_desc = style_description("decrease", &help.style.colors);
+                parts.extend(styled_desc);
             }
-            
+
             // Select pane (return to normal)
             let to_normal_keys = action_key(&keymap, &[TO_NORMAL]);
             let select_key = if to_normal_keys.contains(&KeyWithModifier::new(BareKey::Enter)) {
@@ -615,23 +682,28 @@ fn show_enhanced_mode_keybindings(help: &ModeInfo, max_len: usize, _tip_name: &s
             if !select_key.is_empty() {
                 let styled_keys = style_key_with_modifier(&select_key, &help.style.colors, None);
                 parts.extend(styled_keys);
-                parts.push(Style::new().paint(":select "));
+                let styled_desc = style_description("select", &help.style.colors);
+                parts.extend(styled_desc);
             }
         }
         InputMode::Move => {
             // Use original implementation pattern for move operations
-            let move_keys = action_key_group(&keymap, &[
-                &[Action::MovePane(Some(Direction::Left))], 
-                &[Action::MovePane(Some(Direction::Down))],
-                &[Action::MovePane(Some(Direction::Up))], 
-                &[Action::MovePane(Some(Direction::Right))]
-            ]);
+            let move_keys = action_key_group(
+                &keymap,
+                &[
+                    &[Action::MovePane(Some(Direction::Left))],
+                    &[Action::MovePane(Some(Direction::Down))],
+                    &[Action::MovePane(Some(Direction::Up))],
+                    &[Action::MovePane(Some(Direction::Right))],
+                ],
+            );
             if !move_keys.is_empty() {
                 let styled_keys = style_key_with_modifier(&move_keys, &help.style.colors, None);
                 parts.extend(styled_keys);
-                parts.push(Style::new().paint(":move "));
+                let styled_desc = style_description("move", &help.style.colors);
+                parts.extend(styled_desc);
             }
-            
+
             // Select pane (return to normal)
             let to_normal_keys = action_key(&keymap, &[TO_NORMAL]);
             let select_key = if to_normal_keys.contains(&KeyWithModifier::new(BareKey::Enter)) {
@@ -642,51 +714,72 @@ fn show_enhanced_mode_keybindings(help: &ModeInfo, max_len: usize, _tip_name: &s
             if !select_key.is_empty() {
                 let styled_keys = style_key_with_modifier(&select_key, &help.style.colors, None);
                 parts.extend(styled_keys);
-                parts.push(Style::new().paint(":select "));
+                let styled_desc = style_description("select", &help.style.colors);
+                parts.extend(styled_desc);
             }
         }
         InputMode::Scroll => {
             // Use original implementation pattern for scroll operations
             // Enter search term
-            let search_keys = action_key(&keymap, &[Action::SwitchToMode(InputMode::EnterSearch), Action::SearchInput(vec![0])]);
+            let search_keys = action_key(
+                &keymap,
+                &[
+                    Action::SwitchToMode(InputMode::EnterSearch),
+                    Action::SearchInput(vec![0]),
+                ],
+            );
             if !search_keys.is_empty() {
                 let styled_keys = style_key_with_modifier(&search_keys, &help.style.colors, None);
                 parts.extend(styled_keys);
-                parts.push(Style::new().paint(":search "));
+                let styled_desc = style_description("search", &help.style.colors);
+                parts.extend(styled_desc);
             }
-            
+
             // Scroll operations
-            let scroll_keys = action_key_group(&keymap, &[&[Action::ScrollDown], &[Action::ScrollUp]]);
+            let scroll_keys =
+                action_key_group(&keymap, &[&[Action::ScrollDown], &[Action::ScrollUp]]);
             if !scroll_keys.is_empty() {
                 let styled_keys = style_key_with_modifier(&scroll_keys, &help.style.colors, None);
                 parts.extend(styled_keys);
-                parts.push(Style::new().paint(":scroll "));
+                let styled_desc = style_description("scroll", &help.style.colors);
+                parts.extend(styled_desc);
             }
-            
+
             // Page scroll operations
-            let page_scroll_keys = action_key_group(&keymap, &[&[Action::PageScrollDown], &[Action::PageScrollUp]]);
+            let page_scroll_keys = action_key_group(
+                &keymap,
+                &[&[Action::PageScrollDown], &[Action::PageScrollUp]],
+            );
             if !page_scroll_keys.is_empty() {
-                let styled_keys = style_key_with_modifier(&page_scroll_keys, &help.style.colors, None);
+                let styled_keys =
+                    style_key_with_modifier(&page_scroll_keys, &help.style.colors, None);
                 parts.extend(styled_keys);
-                parts.push(Style::new().paint(":page "));
+                let styled_desc = style_description("page", &help.style.colors);
+                parts.extend(styled_desc);
             }
-            
+
             // Half page scroll operations
-            let half_page_scroll_keys = action_key_group(&keymap, &[&[Action::HalfPageScrollDown], &[Action::HalfPageScrollUp]]);
+            let half_page_scroll_keys = action_key_group(
+                &keymap,
+                &[&[Action::HalfPageScrollDown], &[Action::HalfPageScrollUp]],
+            );
             if !half_page_scroll_keys.is_empty() {
-                let styled_keys = style_key_with_modifier(&half_page_scroll_keys, &help.style.colors, None);
+                let styled_keys =
+                    style_key_with_modifier(&half_page_scroll_keys, &help.style.colors, None);
                 parts.extend(styled_keys);
-                parts.push(Style::new().paint(":half page "));
+                let styled_desc = style_description("half page", &help.style.colors);
+                parts.extend(styled_desc);
             }
-            
+
             // Edit scrollback
             let edit_keys = single_action_key(&keymap, &[Action::EditScrollback, TO_NORMAL]);
             if !edit_keys.is_empty() {
                 let styled_keys = style_key_with_modifier(&edit_keys, &help.style.colors, None);
                 parts.extend(styled_keys);
-                parts.push(Style::new().paint(":edit "));
+                let styled_desc = style_description("edit", &help.style.colors);
+                parts.extend(styled_desc);
             }
-            
+
             // Select pane (return to normal)
             let to_normal_keys = action_key(&keymap, &[TO_NORMAL]);
             let select_key = if to_normal_keys.contains(&KeyWithModifier::new(BareKey::Enter)) {
@@ -697,58 +790,82 @@ fn show_enhanced_mode_keybindings(help: &ModeInfo, max_len: usize, _tip_name: &s
             if !select_key.is_empty() {
                 let styled_keys = style_key_with_modifier(&select_key, &help.style.colors, None);
                 parts.extend(styled_keys);
-                parts.push(Style::new().paint(":select "));
+                let styled_desc = style_description("select", &help.style.colors);
+                parts.extend(styled_desc);
             }
         }
         InputMode::Search => {
             // Use original implementation pattern for search operations
             // Enter search term
-            let search_keys = action_key(&keymap, &[Action::SwitchToMode(InputMode::EnterSearch), Action::SearchInput(vec![0])]);
+            let search_keys = action_key(
+                &keymap,
+                &[
+                    Action::SwitchToMode(InputMode::EnterSearch),
+                    Action::SearchInput(vec![0]),
+                ],
+            );
             if !search_keys.is_empty() {
                 let styled_keys = style_key_with_modifier(&search_keys, &help.style.colors, None);
                 parts.extend(styled_keys);
-                parts.push(Style::new().paint(":search "));
+                let styled_desc = style_description("search", &help.style.colors);
+                parts.extend(styled_desc);
             }
-            
+
             // Scroll operations (same as scroll mode)
-            let scroll_keys = action_key_group(&keymap, &[&[Action::ScrollDown], &[Action::ScrollUp]]);
+            let scroll_keys =
+                action_key_group(&keymap, &[&[Action::ScrollDown], &[Action::ScrollUp]]);
             if !scroll_keys.is_empty() {
                 let styled_keys = style_key_with_modifier(&scroll_keys, &help.style.colors, None);
                 parts.extend(styled_keys);
-                parts.push(Style::new().paint(":scroll "));
+                let styled_desc = style_description("scroll", &help.style.colors);
+                parts.extend(styled_desc);
             }
-            
+
             // Page scroll operations
-            let page_scroll_keys = action_key_group(&keymap, &[&[Action::PageScrollDown], &[Action::PageScrollUp]]);
+            let page_scroll_keys = action_key_group(
+                &keymap,
+                &[&[Action::PageScrollDown], &[Action::PageScrollUp]],
+            );
             if !page_scroll_keys.is_empty() {
-                let styled_keys = style_key_with_modifier(&page_scroll_keys, &help.style.colors, None);
+                let styled_keys =
+                    style_key_with_modifier(&page_scroll_keys, &help.style.colors, None);
                 parts.extend(styled_keys);
-                parts.push(Style::new().paint(":page "));
+                let styled_desc = style_description("page", &help.style.colors);
+                parts.extend(styled_desc);
             }
-            
+
             // Half page scroll operations
-            let half_page_scroll_keys = action_key_group(&keymap, &[&[Action::HalfPageScrollDown], &[Action::HalfPageScrollUp]]);
+            let half_page_scroll_keys = action_key_group(
+                &keymap,
+                &[&[Action::HalfPageScrollDown], &[Action::HalfPageScrollUp]],
+            );
             if !half_page_scroll_keys.is_empty() {
-                let styled_keys = style_key_with_modifier(&half_page_scroll_keys, &help.style.colors, None);
+                let styled_keys =
+                    style_key_with_modifier(&half_page_scroll_keys, &help.style.colors, None);
                 parts.extend(styled_keys);
-                parts.push(Style::new().paint(":half page "));
+                let styled_desc = style_description("half page", &help.style.colors);
+                parts.extend(styled_desc);
             }
-            
-            // Search directions  
+
+            // Search directions
             let search_down_keys = action_key(&keymap, &[Action::Search(SearchDirection::Down)]);
             if !search_down_keys.is_empty() {
-                let styled_keys = style_key_with_modifier(&search_down_keys, &help.style.colors, None);
+                let styled_keys =
+                    style_key_with_modifier(&search_down_keys, &help.style.colors, None);
                 parts.extend(styled_keys);
-                parts.push(Style::new().paint(":down "));
+                let styled_desc = style_description("down", &help.style.colors);
+                parts.extend(styled_desc);
             }
-            
+
             let search_up_keys = action_key(&keymap, &[Action::Search(SearchDirection::Up)]);
             if !search_up_keys.is_empty() {
-                let styled_keys = style_key_with_modifier(&search_up_keys, &help.style.colors, None);
+                let styled_keys =
+                    style_key_with_modifier(&search_up_keys, &help.style.colors, None);
                 parts.extend(styled_keys);
-                parts.push(Style::new().paint(":up "));
+                let styled_desc = style_description("up", &help.style.colors);
+                parts.extend(styled_desc);
             }
-            
+
             // Select pane (return to normal)
             let to_normal_keys = action_key(&keymap, &[TO_NORMAL]);
             let select_key = if to_normal_keys.contains(&KeyWithModifier::new(BareKey::Enter)) {
@@ -759,7 +876,8 @@ fn show_enhanced_mode_keybindings(help: &ModeInfo, max_len: usize, _tip_name: &s
             if !select_key.is_empty() {
                 let styled_keys = style_key_with_modifier(&select_key, &help.style.colors, None);
                 parts.extend(styled_keys);
-                parts.push(Style::new().paint(":select "));
+                let styled_desc = style_description("select", &help.style.colors);
+                parts.extend(styled_desc);
             }
         }
         InputMode::Session => {
@@ -774,7 +892,7 @@ fn show_enhanced_mode_keybindings(help: &ModeInfo, max_len: usize, _tip_name: &s
                 if !keys.is_empty() {
                     let styled_keys = style_key_with_modifier(&keys, &help.style.colors, None);
                     parts.extend(styled_keys);
-                    parts.push(Style::new().paint(format!(":{} ", label)));
+                    parts.push(Style::new().paint(format!(" {} ", label)));
                 }
             }
         }
@@ -784,7 +902,8 @@ fn show_enhanced_mode_keybindings(help: &ModeInfo, max_len: usize, _tip_name: &s
             if !keys.is_empty() {
                 let styled_keys = style_key_with_modifier(&keys, &help.style.colors, None);
                 parts.extend(styled_keys);
-                parts.push(Style::new().paint(":normal "));
+                let styled_desc = style_description("normal", &help.style.colors);
+                parts.extend(styled_desc);
             }
         }
     }
@@ -814,4 +933,3 @@ fn show_enhanced_mode_keybindings(help: &ModeInfo, max_len: usize, _tip_name: &s
         }
     }
 }
-
