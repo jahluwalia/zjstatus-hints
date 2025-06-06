@@ -30,7 +30,7 @@ jobs:
           target: wasm32-wasip1
 
       - name: Build release binary
-        run: cargo build --release
+        run: cargo build --release --target=wasm32-wasip1
 
       - name: Generate a changelog
         uses: orhun/git-cliff-action@4a4a951bc43fafe41cd2348d181853f52356bee7 # v3
@@ -50,5 +50,4 @@ jobs:
           body: ${{ steps.git-cliff.outputs.content }}
           prerelease: false
           files: |
-            ./target/wasm32-wasip1/release/zjstatus.wasm
-            ./target/wasm32-wasip1/release/zjframes.wasm
+            ./target/wasm32-wasip1/release/zjstatus-hints.wasm
