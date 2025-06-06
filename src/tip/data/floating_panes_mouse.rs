@@ -45,10 +45,6 @@ pub fn floating_panes_mouse_short(help: &ModeInfo) -> LinePart {
 }
 
 fn add_keybinds(help: &ModeInfo) -> Vec<ANSIString> {
-    let to_pane = action_key(
-        &help.get_mode_keybinds(),
-        &[Action::SwitchToMode(InputMode::Pane)],
-    );
     let floating_toggle = action_key(
         &help.get_keybinds_for_mode(InputMode::Pane),
         &[
@@ -62,12 +58,10 @@ fn add_keybinds(help: &ModeInfo) -> Vec<ANSIString> {
     }
 
     let mut bits = vec![];
-    bits.extend(style_key_with_modifier(&to_pane, &help.style.colors, None));
     bits.push(Style::new().paint(", "));
     bits.extend(style_key_with_modifier(
         &floating_toggle,
         &help.style.colors,
-        None,
     ));
     bits
 }

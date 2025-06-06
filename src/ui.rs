@@ -150,7 +150,7 @@ fn show_mode_keybindings(help: &ModeInfo, max_len: usize) -> LinePart {
             for (action, label) in keybindings {
                 let keys = action_key(&keymap, &[action]);
                 if !keys.is_empty() {
-                    let styled_keys = style_key_with_modifier(&keys, &help.style.colors, None);
+                    let styled_keys = style_key_with_modifier(&keys, &help.style.colors);
                     parts.extend(styled_keys);
                     let styled_desc = style_description(label, &help.style.colors);
                     parts.extend(styled_desc);
@@ -169,7 +169,7 @@ fn show_mode_keybindings(help: &ModeInfo, max_len: usize) -> LinePart {
             for (action, label) in keybindings {
                 let keys = action_key(&keymap, &[action]);
                 if !keys.is_empty() {
-                    let styled_keys = style_key_with_modifier(&keys, &help.style.colors, None);
+                    let styled_keys = style_key_with_modifier(&keys, &help.style.colors);
                     parts.extend(styled_keys);
                     let styled_desc = style_description(label, &help.style.colors);
                     parts.extend(styled_desc);
@@ -187,7 +187,7 @@ fn show_mode_keybindings(help: &ModeInfo, max_len: usize) -> LinePart {
             for (action, label) in keybindings {
                 let keys = action_key(&keymap, &[action]);
                 if !keys.is_empty() {
-                    let styled_keys = style_key_with_modifier(&keys, &help.style.colors, None);
+                    let styled_keys = style_key_with_modifier(&keys, &help.style.colors);
                     parts.extend(styled_keys);
                     parts.push(Style::new().paint(format!(" {} ", label)));
                 }
@@ -204,7 +204,7 @@ fn show_mode_keybindings(help: &ModeInfo, max_len: usize) -> LinePart {
             for (action, label) in keybindings {
                 let keys = action_key(&keymap, &[action]);
                 if !keys.is_empty() {
-                    let styled_keys = style_key_with_modifier(&keys, &help.style.colors, None);
+                    let styled_keys = style_key_with_modifier(&keys, &help.style.colors);
                     parts.extend(styled_keys);
                     parts.push(Style::new().paint(format!(" {} ", label)));
                 }
@@ -220,7 +220,7 @@ fn show_mode_keybindings(help: &ModeInfo, max_len: usize) -> LinePart {
             for (action, label) in keybindings {
                 let keys = action_key(&keymap, &[action]);
                 if !keys.is_empty() {
-                    let styled_keys = style_key_with_modifier(&keys, &help.style.colors, None);
+                    let styled_keys = style_key_with_modifier(&keys, &help.style.colors);
                     parts.extend(styled_keys);
                     parts.push(Style::new().paint(format!(" {} ", label)));
                 }
@@ -237,7 +237,7 @@ fn show_mode_keybindings(help: &ModeInfo, max_len: usize) -> LinePart {
             for (action, label) in keybindings {
                 let keys = action_key(&keymap, &[action]);
                 if !keys.is_empty() {
-                    let styled_keys = style_key_with_modifier(&keys, &help.style.colors, None);
+                    let styled_keys = style_key_with_modifier(&keys, &help.style.colors);
                     parts.extend(styled_keys);
                     parts.push(Style::new().paint(format!(" {} ", label)));
                 }
@@ -254,7 +254,7 @@ fn show_mode_keybindings(help: &ModeInfo, max_len: usize) -> LinePart {
             for (action, label) in keybindings {
                 let keys = action_key(&keymap, &[action]);
                 if !keys.is_empty() {
-                    let styled_keys = style_key_with_modifier(&keys, &help.style.colors, None);
+                    let styled_keys = style_key_with_modifier(&keys, &help.style.colors);
                     parts.extend(styled_keys);
                     parts.push(Style::new().paint(format!(" {} ", label)));
                 }
@@ -264,7 +264,7 @@ fn show_mode_keybindings(help: &ModeInfo, max_len: usize) -> LinePart {
             // Use original implementation pattern for session operations
             let detach_keys = action_key(&keymap, &[Action::Detach]);
             if !detach_keys.is_empty() {
-                let styled_keys = style_key_with_modifier(&detach_keys, &help.style.colors, None);
+                let styled_keys = style_key_with_modifier(&detach_keys, &help.style.colors);
                 parts.extend(styled_keys);
                 let styled_desc = style_description("detach", &help.style.colors);
                 parts.extend(styled_desc);
@@ -278,7 +278,7 @@ fn show_mode_keybindings(help: &ModeInfo, max_len: usize) -> LinePart {
                 to_normal_keys.into_iter().take(1).collect()
             };
             if !select_key.is_empty() {
-                let styled_keys = style_key_with_modifier(&select_key, &help.style.colors, None);
+                let styled_keys = style_key_with_modifier(&select_key, &help.style.colors);
                 parts.extend(styled_keys);
                 let styled_desc = style_description("select", &help.style.colors);
                 parts.extend(styled_desc);
@@ -288,7 +288,7 @@ fn show_mode_keybindings(help: &ModeInfo, max_len: usize) -> LinePart {
             // For other modes, just show how to get back to normal
             let keys = action_key(&keymap, &[Action::SwitchToMode(InputMode::Normal)]);
             if !keys.is_empty() {
-                let styled_keys = style_key_with_modifier(&keys, &help.style.colors, None);
+                let styled_keys = style_key_with_modifier(&keys, &help.style.colors);
                 parts.extend(styled_keys);
                 let styled_desc = style_description("normal", &help.style.colors);
                 parts.extend(styled_desc);
@@ -457,7 +457,7 @@ fn show_enhanced_mode_keybindings(help: &ModeInfo, max_len: usize, _tip_name: &s
             for (action, label) in keybindings {
                 let keys = action_key(&keymap, &[action]);
                 if !keys.is_empty() {
-                    let styled_keys = style_key_with_modifier(&keys, &help.style.colors, None);
+                    let styled_keys = style_key_with_modifier(&keys, &help.style.colors);
                     parts.extend(styled_keys);
                     parts.push(Style::new().paint(format!(" {} ", label)));
                 }
@@ -493,7 +493,7 @@ fn show_enhanced_mode_keybindings(help: &ModeInfo, max_len: usize, _tip_name: &s
             for (actions, label) in pane_actions {
                 let keys = single_action_key(&keymap, actions);
                 if !keys.is_empty() {
-                    let styled_keys = style_key_with_modifier(&keys, &help.style.colors, None);
+                    let styled_keys = style_key_with_modifier(&keys, &help.style.colors);
                     parts.extend(styled_keys);
                     parts.push(Style::new().paint(format!(" {} ", label)));
                 }
@@ -508,7 +508,7 @@ fn show_enhanced_mode_keybindings(help: &ModeInfo, max_len: usize, _tip_name: &s
                 ],
             );
             if !rename_keys.is_empty() {
-                let styled_keys = style_key_with_modifier(&rename_keys, &help.style.colors, None);
+                let styled_keys = style_key_with_modifier(&rename_keys, &help.style.colors);
                 parts.extend(styled_keys);
                 let styled_desc = style_description("rename", &help.style.colors);
                 parts.extend(styled_desc);
@@ -525,7 +525,7 @@ fn show_enhanced_mode_keybindings(help: &ModeInfo, max_len: usize, _tip_name: &s
                 ],
             );
             if !focus_keys.is_empty() {
-                let styled_keys = style_key_with_modifier(&focus_keys, &help.style.colors, None);
+                let styled_keys = style_key_with_modifier(&focus_keys, &help.style.colors);
                 parts.extend(styled_keys);
                 let styled_desc = style_description("move", &help.style.colors);
                 parts.extend(styled_desc);
@@ -539,7 +539,7 @@ fn show_enhanced_mode_keybindings(help: &ModeInfo, max_len: usize, _tip_name: &s
                 to_normal_keys.into_iter().take(1).collect()
             };
             if !select_key.is_empty() {
-                let styled_keys = style_key_with_modifier(&select_key, &help.style.colors, None);
+                let styled_keys = style_key_with_modifier(&select_key, &help.style.colors);
                 parts.extend(styled_keys);
                 let styled_desc = style_description("select", &help.style.colors);
                 parts.extend(styled_desc);
@@ -563,7 +563,7 @@ fn show_enhanced_mode_keybindings(help: &ModeInfo, max_len: usize, _tip_name: &s
             for (actions, label) in tab_actions {
                 let keys = single_action_key(&keymap, actions);
                 if !keys.is_empty() {
-                    let styled_keys = style_key_with_modifier(&keys, &help.style.colors, None);
+                    let styled_keys = style_key_with_modifier(&keys, &help.style.colors);
                     parts.extend(styled_keys);
                     parts.push(Style::new().paint(format!(" {} ", label)));
                 }
@@ -578,7 +578,7 @@ fn show_enhanced_mode_keybindings(help: &ModeInfo, max_len: usize, _tip_name: &s
                 ],
             );
             if !rename_keys.is_empty() {
-                let styled_keys = style_key_with_modifier(&rename_keys, &help.style.colors, None);
+                let styled_keys = style_key_with_modifier(&rename_keys, &help.style.colors);
                 parts.extend(styled_keys);
                 let styled_desc = style_description("rename", &help.style.colors);
                 parts.extend(styled_desc);
@@ -600,7 +600,7 @@ fn show_enhanced_mode_keybindings(help: &ModeInfo, max_len: usize, _tip_name: &s
                 focus_keys_full
             };
             if !focus_keys.is_empty() {
-                let styled_keys = style_key_with_modifier(&focus_keys, &help.style.colors, None);
+                let styled_keys = style_key_with_modifier(&focus_keys, &help.style.colors);
                 parts.extend(styled_keys);
                 let styled_desc = style_description("move", &help.style.colors);
                 parts.extend(styled_desc);
@@ -614,7 +614,7 @@ fn show_enhanced_mode_keybindings(help: &ModeInfo, max_len: usize, _tip_name: &s
                 to_normal_keys.into_iter().take(1).collect()
             };
             if !select_key.is_empty() {
-                let styled_keys = style_key_with_modifier(&select_key, &help.style.colors, None);
+                let styled_keys = style_key_with_modifier(&select_key, &help.style.colors);
                 parts.extend(styled_keys);
                 let styled_desc = style_description("select", &help.style.colors);
                 parts.extend(styled_desc);
@@ -630,7 +630,7 @@ fn show_enhanced_mode_keybindings(help: &ModeInfo, max_len: usize, _tip_name: &s
                 ],
             );
             if !resize_keys.is_empty() {
-                let styled_keys = style_key_with_modifier(&resize_keys, &help.style.colors, None);
+                let styled_keys = style_key_with_modifier(&resize_keys, &help.style.colors);
                 parts.extend(styled_keys);
                 let styled_desc = style_description("resize", &help.style.colors);
                 parts.extend(styled_desc);
@@ -648,7 +648,7 @@ fn show_enhanced_mode_keybindings(help: &ModeInfo, max_len: usize, _tip_name: &s
             );
             if !resize_increase_keys.is_empty() {
                 let styled_keys =
-                    style_key_with_modifier(&resize_increase_keys, &help.style.colors, None);
+                    style_key_with_modifier(&resize_increase_keys, &help.style.colors);
                 parts.extend(styled_keys);
                 let styled_desc = style_description("increase", &help.style.colors);
                 parts.extend(styled_desc);
@@ -666,7 +666,7 @@ fn show_enhanced_mode_keybindings(help: &ModeInfo, max_len: usize, _tip_name: &s
             );
             if !resize_decrease_keys.is_empty() {
                 let styled_keys =
-                    style_key_with_modifier(&resize_decrease_keys, &help.style.colors, None);
+                    style_key_with_modifier(&resize_decrease_keys, &help.style.colors);
                 parts.extend(styled_keys);
                 let styled_desc = style_description("decrease", &help.style.colors);
                 parts.extend(styled_desc);
@@ -680,7 +680,7 @@ fn show_enhanced_mode_keybindings(help: &ModeInfo, max_len: usize, _tip_name: &s
                 to_normal_keys.into_iter().take(1).collect()
             };
             if !select_key.is_empty() {
-                let styled_keys = style_key_with_modifier(&select_key, &help.style.colors, None);
+                let styled_keys = style_key_with_modifier(&select_key, &help.style.colors);
                 parts.extend(styled_keys);
                 let styled_desc = style_description("select", &help.style.colors);
                 parts.extend(styled_desc);
@@ -698,7 +698,7 @@ fn show_enhanced_mode_keybindings(help: &ModeInfo, max_len: usize, _tip_name: &s
                 ],
             );
             if !move_keys.is_empty() {
-                let styled_keys = style_key_with_modifier(&move_keys, &help.style.colors, None);
+                let styled_keys = style_key_with_modifier(&move_keys, &help.style.colors);
                 parts.extend(styled_keys);
                 let styled_desc = style_description("move", &help.style.colors);
                 parts.extend(styled_desc);
@@ -712,7 +712,7 @@ fn show_enhanced_mode_keybindings(help: &ModeInfo, max_len: usize, _tip_name: &s
                 to_normal_keys.into_iter().take(1).collect()
             };
             if !select_key.is_empty() {
-                let styled_keys = style_key_with_modifier(&select_key, &help.style.colors, None);
+                let styled_keys = style_key_with_modifier(&select_key, &help.style.colors);
                 parts.extend(styled_keys);
                 let styled_desc = style_description("select", &help.style.colors);
                 parts.extend(styled_desc);
@@ -729,7 +729,7 @@ fn show_enhanced_mode_keybindings(help: &ModeInfo, max_len: usize, _tip_name: &s
                 ],
             );
             if !search_keys.is_empty() {
-                let styled_keys = style_key_with_modifier(&search_keys, &help.style.colors, None);
+                let styled_keys = style_key_with_modifier(&search_keys, &help.style.colors);
                 parts.extend(styled_keys);
                 let styled_desc = style_description("search", &help.style.colors);
                 parts.extend(styled_desc);
@@ -739,7 +739,7 @@ fn show_enhanced_mode_keybindings(help: &ModeInfo, max_len: usize, _tip_name: &s
             let scroll_keys =
                 action_key_group(&keymap, &[&[Action::ScrollDown], &[Action::ScrollUp]]);
             if !scroll_keys.is_empty() {
-                let styled_keys = style_key_with_modifier(&scroll_keys, &help.style.colors, None);
+                let styled_keys = style_key_with_modifier(&scroll_keys, &help.style.colors);
                 parts.extend(styled_keys);
                 let styled_desc = style_description("scroll", &help.style.colors);
                 parts.extend(styled_desc);
@@ -751,8 +751,7 @@ fn show_enhanced_mode_keybindings(help: &ModeInfo, max_len: usize, _tip_name: &s
                 &[&[Action::PageScrollDown], &[Action::PageScrollUp]],
             );
             if !page_scroll_keys.is_empty() {
-                let styled_keys =
-                    style_key_with_modifier(&page_scroll_keys, &help.style.colors, None);
+                let styled_keys = style_key_with_modifier(&page_scroll_keys, &help.style.colors);
                 parts.extend(styled_keys);
                 let styled_desc = style_description("page", &help.style.colors);
                 parts.extend(styled_desc);
@@ -765,7 +764,7 @@ fn show_enhanced_mode_keybindings(help: &ModeInfo, max_len: usize, _tip_name: &s
             );
             if !half_page_scroll_keys.is_empty() {
                 let styled_keys =
-                    style_key_with_modifier(&half_page_scroll_keys, &help.style.colors, None);
+                    style_key_with_modifier(&half_page_scroll_keys, &help.style.colors);
                 parts.extend(styled_keys);
                 let styled_desc = style_description("half page", &help.style.colors);
                 parts.extend(styled_desc);
@@ -774,7 +773,7 @@ fn show_enhanced_mode_keybindings(help: &ModeInfo, max_len: usize, _tip_name: &s
             // Edit scrollback
             let edit_keys = single_action_key(&keymap, &[Action::EditScrollback, TO_NORMAL]);
             if !edit_keys.is_empty() {
-                let styled_keys = style_key_with_modifier(&edit_keys, &help.style.colors, None);
+                let styled_keys = style_key_with_modifier(&edit_keys, &help.style.colors);
                 parts.extend(styled_keys);
                 let styled_desc = style_description("edit", &help.style.colors);
                 parts.extend(styled_desc);
@@ -788,7 +787,7 @@ fn show_enhanced_mode_keybindings(help: &ModeInfo, max_len: usize, _tip_name: &s
                 to_normal_keys.into_iter().take(1).collect()
             };
             if !select_key.is_empty() {
-                let styled_keys = style_key_with_modifier(&select_key, &help.style.colors, None);
+                let styled_keys = style_key_with_modifier(&select_key, &help.style.colors);
                 parts.extend(styled_keys);
                 let styled_desc = style_description("select", &help.style.colors);
                 parts.extend(styled_desc);
@@ -805,7 +804,7 @@ fn show_enhanced_mode_keybindings(help: &ModeInfo, max_len: usize, _tip_name: &s
                 ],
             );
             if !search_keys.is_empty() {
-                let styled_keys = style_key_with_modifier(&search_keys, &help.style.colors, None);
+                let styled_keys = style_key_with_modifier(&search_keys, &help.style.colors);
                 parts.extend(styled_keys);
                 let styled_desc = style_description("search", &help.style.colors);
                 parts.extend(styled_desc);
@@ -815,7 +814,7 @@ fn show_enhanced_mode_keybindings(help: &ModeInfo, max_len: usize, _tip_name: &s
             let scroll_keys =
                 action_key_group(&keymap, &[&[Action::ScrollDown], &[Action::ScrollUp]]);
             if !scroll_keys.is_empty() {
-                let styled_keys = style_key_with_modifier(&scroll_keys, &help.style.colors, None);
+                let styled_keys = style_key_with_modifier(&scroll_keys, &help.style.colors);
                 parts.extend(styled_keys);
                 let styled_desc = style_description("scroll", &help.style.colors);
                 parts.extend(styled_desc);
@@ -827,8 +826,7 @@ fn show_enhanced_mode_keybindings(help: &ModeInfo, max_len: usize, _tip_name: &s
                 &[&[Action::PageScrollDown], &[Action::PageScrollUp]],
             );
             if !page_scroll_keys.is_empty() {
-                let styled_keys =
-                    style_key_with_modifier(&page_scroll_keys, &help.style.colors, None);
+                let styled_keys = style_key_with_modifier(&page_scroll_keys, &help.style.colors);
                 parts.extend(styled_keys);
                 let styled_desc = style_description("page", &help.style.colors);
                 parts.extend(styled_desc);
@@ -841,7 +839,7 @@ fn show_enhanced_mode_keybindings(help: &ModeInfo, max_len: usize, _tip_name: &s
             );
             if !half_page_scroll_keys.is_empty() {
                 let styled_keys =
-                    style_key_with_modifier(&half_page_scroll_keys, &help.style.colors, None);
+                    style_key_with_modifier(&half_page_scroll_keys, &help.style.colors);
                 parts.extend(styled_keys);
                 let styled_desc = style_description("half page", &help.style.colors);
                 parts.extend(styled_desc);
@@ -850,8 +848,7 @@ fn show_enhanced_mode_keybindings(help: &ModeInfo, max_len: usize, _tip_name: &s
             // Search directions
             let search_down_keys = action_key(&keymap, &[Action::Search(SearchDirection::Down)]);
             if !search_down_keys.is_empty() {
-                let styled_keys =
-                    style_key_with_modifier(&search_down_keys, &help.style.colors, None);
+                let styled_keys = style_key_with_modifier(&search_down_keys, &help.style.colors);
                 parts.extend(styled_keys);
                 let styled_desc = style_description("down", &help.style.colors);
                 parts.extend(styled_desc);
@@ -859,8 +856,7 @@ fn show_enhanced_mode_keybindings(help: &ModeInfo, max_len: usize, _tip_name: &s
 
             let search_up_keys = action_key(&keymap, &[Action::Search(SearchDirection::Up)]);
             if !search_up_keys.is_empty() {
-                let styled_keys =
-                    style_key_with_modifier(&search_up_keys, &help.style.colors, None);
+                let styled_keys = style_key_with_modifier(&search_up_keys, &help.style.colors);
                 parts.extend(styled_keys);
                 let styled_desc = style_description("up", &help.style.colors);
                 parts.extend(styled_desc);
@@ -874,7 +870,7 @@ fn show_enhanced_mode_keybindings(help: &ModeInfo, max_len: usize, _tip_name: &s
                 to_normal_keys.into_iter().take(1).collect()
             };
             if !select_key.is_empty() {
-                let styled_keys = style_key_with_modifier(&select_key, &help.style.colors, None);
+                let styled_keys = style_key_with_modifier(&select_key, &help.style.colors);
                 parts.extend(styled_keys);
                 let styled_desc = style_description("select", &help.style.colors);
                 parts.extend(styled_desc);
@@ -890,7 +886,7 @@ fn show_enhanced_mode_keybindings(help: &ModeInfo, max_len: usize, _tip_name: &s
             for (action, label) in keybindings {
                 let keys = action_key(&keymap, &[action]);
                 if !keys.is_empty() {
-                    let styled_keys = style_key_with_modifier(&keys, &help.style.colors, None);
+                    let styled_keys = style_key_with_modifier(&keys, &help.style.colors);
                     parts.extend(styled_keys);
                     parts.push(Style::new().paint(format!(" {} ", label)));
                 }
@@ -900,7 +896,7 @@ fn show_enhanced_mode_keybindings(help: &ModeInfo, max_len: usize, _tip_name: &s
             // For other modes, just show how to get back to normal
             let keys = action_key(&keymap, &[Action::SwitchToMode(InputMode::Normal)]);
             if !keys.is_empty() {
-                let styled_keys = style_key_with_modifier(&keys, &help.style.colors, None);
+                let styled_keys = style_key_with_modifier(&keys, &help.style.colors);
                 parts.extend(styled_keys);
                 let styled_desc = style_description("normal", &help.style.colors);
                 parts.extend(styled_desc);

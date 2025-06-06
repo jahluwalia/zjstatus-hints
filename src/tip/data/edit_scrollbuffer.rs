@@ -83,12 +83,8 @@ fn add_keybinds(help: &ModeInfo) -> Vec<ANSIString> {
     }
 
     let mut bits = vec![];
-    bits.extend(style_key_with_modifier(&to_pane, &help.style.colors, None));
+    bits.extend(style_key_with_modifier(&to_pane, &help.style.colors));
     bits.push(Style::new().paint(", "));
-    bits.extend(style_key_with_modifier(
-        &edit_buffer,
-        &help.style.colors,
-        None,
-    ));
+    bits.extend(style_key_with_modifier(&edit_buffer, &help.style.colors));
     bits
 }

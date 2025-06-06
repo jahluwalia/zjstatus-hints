@@ -10,7 +10,7 @@ use std::collections::BTreeMap;
 use std::fmt::{Display, Error, Formatter};
 use zellij_tile::prelude::actions::Action;
 use zellij_tile::prelude::*;
-use zellij_tile_utils::{palette_match, style};
+use zellij_tile_utils::palette_match;
 
 use tip::utils::get_cached_tip_name;
 use ui::one_line_ui;
@@ -27,6 +27,8 @@ struct State {
     display_system_clipboard_failure: bool,
     classic_ui: bool,
     base_mode_is_locked: bool,
+    max_length: usize,
+    overflow_str: String,
 }
 
 register_plugin!(State);
@@ -50,7 +52,6 @@ impl Display for LinePart {
     }
 }
 
-static MORE_MSG: &str = " ... ";
 /// Shorthand for `Action::SwitchToMode(InputMode::Normal)`.
 const TO_NORMAL: Action = Action::SwitchToMode(InputMode::Normal);
 
@@ -75,108 +76,6 @@ pub struct SegmentStyle {
     pub suffix_separator: Style,
 }
 
-fn color_elements(palette: Styling, different_color_alternates: bool) -> ColoredElements {
-    let background = palette.text_unselected.background;
-    let foreground = palette.text_unselected.base;
-    let alternate_background_color = if different_color_alternates {
-        palette.ribbon_unselected.base
-    } else {
-        palette.ribbon_unselected.background
-    };
-    ColoredElements {
-        selected: SegmentStyle {
-            prefix_separator: style!(background, palette.ribbon_selected.background),
-            char_left_separator: style!(
-                palette.ribbon_selected.base,
-                palette.ribbon_selected.background
-            )
-            .bold(),
-            char_shortcut: style!(
-                palette.ribbon_selected.emphasis_0,
-                palette.ribbon_selected.background
-            )
-            .bold(),
-            char_right_separator: style!(
-                palette.ribbon_selected.base,
-                palette.ribbon_selected.background
-            )
-            .bold(),
-            styled_text: style!(
-                palette.ribbon_selected.base,
-                palette.ribbon_selected.background
-            )
-            .bold(),
-            suffix_separator: style!(palette.ribbon_selected.background, background).bold(),
-        },
-        unselected: SegmentStyle {
-            prefix_separator: style!(background, palette.ribbon_unselected.background),
-            char_left_separator: style!(
-                palette.ribbon_unselected.base,
-                palette.ribbon_unselected.background
-            )
-            .bold(),
-            char_shortcut: style!(
-                palette.ribbon_unselected.emphasis_0,
-                palette.ribbon_unselected.background
-            )
-            .bold(),
-            char_right_separator: style!(
-                palette.ribbon_unselected.base,
-                palette.ribbon_unselected.background
-            )
-            .bold(),
-            styled_text: style!(
-                palette.ribbon_unselected.base,
-                palette.ribbon_unselected.background
-            )
-            .bold(),
-            suffix_separator: style!(palette.ribbon_unselected.background, background).bold(),
-        },
-        unselected_alternate: SegmentStyle {
-            prefix_separator: style!(background, alternate_background_color),
-            char_left_separator: style!(background, alternate_background_color).bold(),
-            char_shortcut: style!(
-                palette.ribbon_unselected.emphasis_0,
-                alternate_background_color
-            )
-            .bold(),
-            char_right_separator: style!(background, alternate_background_color).bold(),
-            styled_text: style!(palette.ribbon_unselected.base, alternate_background_color).bold(),
-            suffix_separator: style!(alternate_background_color, background).bold(),
-        },
-        disabled: SegmentStyle {
-            prefix_separator: style!(background, palette.ribbon_unselected.background),
-            char_left_separator: style!(
-                palette.ribbon_unselected.base,
-                palette.ribbon_unselected.background
-            )
-            .dimmed()
-            .italic(),
-            char_shortcut: style!(
-                palette.ribbon_unselected.base,
-                palette.ribbon_unselected.background
-            )
-            .dimmed()
-            .italic(),
-            char_right_separator: style!(
-                palette.ribbon_unselected.base,
-                palette.ribbon_unselected.background
-            )
-            .dimmed()
-            .italic(),
-            styled_text: style!(
-                palette.ribbon_unselected.base,
-                palette.ribbon_unselected.background
-            )
-            .dimmed()
-            .italic(),
-            suffix_separator: style!(palette.ribbon_unselected.background, background),
-        },
-        superkey_prefix: style!(foreground, background).bold(),
-        superkey_suffix_separator: style!(background, background),
-    }
-}
-
 pub fn get_common_modifiers(mut keyvec: Vec<&KeyWithModifier>) -> Vec<KeyModifier> {
     if keyvec.is_empty() {
         return vec![];
@@ -198,6 +97,14 @@ impl ZellijPlugin for State {
             .get("classic")
             .map(|c| c == "true")
             .unwrap_or(false);
+        self.max_length = configuration
+            .get("max_length")
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(0);
+        self.overflow_str = configuration
+            .get("overflow_str")
+            .cloned()
+            .unwrap_or_else(|| "...".to_string());
 
         // TODO: The user can't approve/deny permissions because they can't select the pane, I think we need to open a popup or something
         request_permission(&[
@@ -250,9 +157,7 @@ impl ZellijPlugin for State {
                 self.display_system_clipboard_failure = true;
             }
             Event::InputReceived => {
-                if self.text_copy_destination.is_some()
-                    || self.display_system_clipboard_failure == true
-                {
+                if self.text_copy_destination.is_some() || self.display_system_clipboard_failure {
                     should_render = true;
                 }
                 self.text_copy_destination = None;
@@ -304,11 +209,77 @@ impl ZellijPlugin for State {
 impl State {
     fn send_to_zjstatus(&self, message: &str) {
         if !message.is_empty() {
+            let visible_len = self.calculate_visible_length(message);
+            let output = if self.max_length > 0 && visible_len > self.max_length {
+                self.truncate_ansi_string(message, self.max_length)
+            } else {
+                message.to_string()
+            };
             pipe_message_to_plugin(
                 MessageToPlugin::new("pipe")
-                    .with_payload(format!("zjstatus::pipe::pipe_zjstatus_hints::{}", message)),
+                    .with_payload(format!("zjstatus::pipe::pipe_zjstatus_hints::{}", output)),
             );
         }
+    }
+
+    fn truncate_ansi_string(&self, text: &str, max_len: usize) -> String {
+        let visible_len = self.calculate_visible_length(text);
+        let overflow_len = self.overflow_str.len();
+
+        if visible_len <= max_len {
+            return text.to_string();
+        }
+
+        if max_len <= overflow_len {
+            return self.overflow_str.clone();
+        }
+
+        let target_len = max_len - overflow_len;
+        let mut result = String::new();
+        let mut current_len = 0;
+        let chars = text.chars();
+        let mut in_escape = false;
+
+        for ch in chars {
+            if ch == '\x1b' {
+                in_escape = true;
+                result.push(ch);
+            } else if in_escape {
+                result.push(ch);
+                if ch == 'm' {
+                    in_escape = false;
+                }
+            } else {
+                if current_len >= target_len {
+                    break;
+                }
+                result.push(ch);
+                current_len += 1;
+            }
+        }
+
+        result.push_str(&self.overflow_str);
+        result
+    }
+
+    fn calculate_visible_length(&self, text: &str) -> usize {
+        let mut len = 0;
+        let chars = text.chars();
+        let mut in_escape = false;
+
+        for ch in chars {
+            if ch == '\x1b' {
+                in_escape = true;
+            } else if in_escape {
+                if ch == 'm' {
+                    in_escape = false;
+                }
+            } else {
+                len += 1;
+            }
+        }
+
+        len
     }
 }
 
@@ -368,7 +339,6 @@ pub fn single_action_key(
 pub fn style_key_with_modifier(
     keyvec: &[KeyWithModifier],
     palette: &Styling,
-    background: Option<PaletteColor>,
 ) -> Vec<ANSIString<'static>> {
     if keyvec.is_empty() {
         return vec![];
