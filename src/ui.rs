@@ -7,7 +7,8 @@ use zellij_tile::prelude::*;
 use zellij_tile_utils::palette_match;
 
 use crate::{
-    action_key, action_key_group, single_action_key, style_description, LinePart, TO_NORMAL,
+    about_key, action_key, action_key_group, configuration_key, plugin_manager_key,
+    session_manager_key, single_action_key, style_description, to_base_mode, LinePart, TO_NORMAL,
 };
 
 pub fn text_copied_hint(copy_destination: CopyDestination) -> LinePart {
@@ -270,12 +271,51 @@ fn show_mode_keybindings(help: &ModeInfo, max_len: usize) -> LinePart {
                 parts.extend(styled_desc);
             }
 
-            // Select pane (return to normal)
-            let to_normal_keys = action_key(&keymap, &[TO_NORMAL]);
-            let select_key = if to_normal_keys.contains(&KeyWithModifier::new(BareKey::Enter)) {
+            // Session Manager
+            let manager_keys = session_manager_key(&keymap);
+            if !manager_keys.is_empty() {
+                let styled_keys = style_key_with_modifier(&manager_keys, &help.style.colors);
+                parts.extend(styled_keys);
+                let styled_desc = style_description("manager", &help.style.colors);
+                parts.extend(styled_desc);
+            }
+
+            // Configure
+            let config_keys = configuration_key(&keymap);
+            if !config_keys.is_empty() {
+                let styled_keys = style_key_with_modifier(&config_keys, &help.style.colors);
+                parts.extend(styled_keys);
+                let styled_desc = style_description("config", &help.style.colors);
+                parts.extend(styled_desc);
+            }
+
+            // Plugin Manager
+            let plugin_keys = plugin_manager_key(&keymap);
+            if !plugin_keys.is_empty() {
+                let styled_keys = style_key_with_modifier(&plugin_keys, &help.style.colors);
+                parts.extend(styled_keys);
+                let styled_desc = style_description("plugins", &help.style.colors);
+                parts.extend(styled_desc);
+            }
+
+            // About
+            let about_keys = about_key(&keymap);
+            if !about_keys.is_empty() {
+                let styled_keys = style_key_with_modifier(&about_keys, &help.style.colors);
+                parts.extend(styled_keys);
+                let styled_desc = style_description("about", &help.style.colors);
+                parts.extend(styled_desc);
+            }
+
+            // Select pane (return to base mode) - using original implementation pattern
+            let base_mode = help.base_mode;
+            let to_basemode_keys = base_mode
+                .map(|b| action_key(&keymap, &[to_base_mode(b)]))
+                .unwrap_or_else(|| action_key(&keymap, &[TO_NORMAL]));
+            let select_key = if to_basemode_keys.contains(&KeyWithModifier::new(BareKey::Enter)) {
                 vec![KeyWithModifier::new(BareKey::Enter)]
             } else {
-                to_normal_keys.into_iter().take(1).collect()
+                to_basemode_keys.into_iter().take(1).collect()
             };
             if !select_key.is_empty() {
                 let styled_keys = style_key_with_modifier(&select_key, &help.style.colors);
@@ -877,19 +917,66 @@ fn show_enhanced_mode_keybindings(help: &ModeInfo, max_len: usize, _tip_name: &s
             }
         }
         InputMode::Session => {
-            // Show session operations
-            let keybindings = [
-                (Action::Detach, "detach"),
-                (Action::SwitchToMode(InputMode::Normal), "normal"),
-            ];
+            // Use original implementation pattern for session operations
+            let detach_keys = action_key(&keymap, &[Action::Detach]);
+            if !detach_keys.is_empty() {
+                let styled_keys = style_key_with_modifier(&detach_keys, &help.style.colors);
+                parts.extend(styled_keys);
+                let styled_desc = style_description("detach", &help.style.colors);
+                parts.extend(styled_desc);
+            }
 
-            for (action, label) in keybindings {
-                let keys = action_key(&keymap, &[action]);
-                if !keys.is_empty() {
-                    let styled_keys = style_key_with_modifier(&keys, &help.style.colors);
-                    parts.extend(styled_keys);
-                    parts.push(Style::new().paint(format!(" {} ", label)));
-                }
+            // Session Manager
+            let manager_keys = session_manager_key(&keymap);
+            if !manager_keys.is_empty() {
+                let styled_keys = style_key_with_modifier(&manager_keys, &help.style.colors);
+                parts.extend(styled_keys);
+                let styled_desc = style_description("manager", &help.style.colors);
+                parts.extend(styled_desc);
+            }
+
+            // Configure
+            let config_keys = configuration_key(&keymap);
+            if !config_keys.is_empty() {
+                let styled_keys = style_key_with_modifier(&config_keys, &help.style.colors);
+                parts.extend(styled_keys);
+                let styled_desc = style_description("config", &help.style.colors);
+                parts.extend(styled_desc);
+            }
+
+            // Plugin Manager
+            let plugin_keys = plugin_manager_key(&keymap);
+            if !plugin_keys.is_empty() {
+                let styled_keys = style_key_with_modifier(&plugin_keys, &help.style.colors);
+                parts.extend(styled_keys);
+                let styled_desc = style_description("plugins", &help.style.colors);
+                parts.extend(styled_desc);
+            }
+
+            // About
+            let about_keys = about_key(&keymap);
+            if !about_keys.is_empty() {
+                let styled_keys = style_key_with_modifier(&about_keys, &help.style.colors);
+                parts.extend(styled_keys);
+                let styled_desc = style_description("about", &help.style.colors);
+                parts.extend(styled_desc);
+            }
+
+            // Select pane (return to base mode) - using original implementation pattern
+            let base_mode = help.base_mode;
+            let to_basemode_keys = base_mode
+                .map(|b| action_key(&keymap, &[to_base_mode(b)]))
+                .unwrap_or_else(|| action_key(&keymap, &[TO_NORMAL]));
+            let select_key = if to_basemode_keys.contains(&KeyWithModifier::new(BareKey::Enter)) {
+                vec![KeyWithModifier::new(BareKey::Enter)]
+            } else {
+                to_basemode_keys.into_iter().take(1).collect()
+            };
+            if !select_key.is_empty() {
+                let styled_keys = style_key_with_modifier(&select_key, &help.style.colors);
+                parts.extend(styled_keys);
+                let styled_desc = style_description("select", &help.style.colors);
+                parts.extend(styled_desc);
             }
         }
         _ => {
