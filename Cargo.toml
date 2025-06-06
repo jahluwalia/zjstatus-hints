@@ -1,5 +1,5 @@
 [package]
-name = "status-bar"
+name = "zjstatus-hints"
 version = "0.1.0"
 authors = ["Maddison Hellstrom <hi@maddison.io>", "Brooks J Rady <b.j.rady@gmail.com>"]
 edition = "2021"
