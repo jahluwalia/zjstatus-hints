@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-This is a modified zellij status bar plugin designed to provide keybinding hints through pipe communication to the zjstatus plugin. The plugin has been significantly refactored from its original multi-line UI implementation to focus on single-line keybinding reference display.
+This is a modified zellij status bar plugin designed to provide keybinding hints through pipe communication to the zjstatus plugin. The plugin has been significantly refactored from its original multi-line UI implementation to focus on single-line keybinding reference display with enhanced visual styling and priority system from the original codebase.
 
 ## Project Goals
 
@@ -10,27 +10,36 @@ This is a modified zellij status bar plugin designed to provide keybinding hints
 Transform a complex multi-line zellij status bar plugin into a simplified single-line keybinding reference that:
 - Shows terse, immediate keybinding hints for the current mode
 - Integrates with zjstatus via pipe communication
+- Preserves original visual styling and color system
+- Maintains intelligent priority-based display logic
 - Eliminates unnecessary UI complexity while preserving essential functionality
 
 ### User Experience Vision
 Provide users with an immediate reference showing `<key>:action` mappings for:
-- **Normal mode**: Mode-switching keys (pane, tab, resize, move, scroll, search, session)
+- **Normal mode**: Mode-switching keys (pane, tab, resize, move, scroll, search, session, quit)
 - **Other modes**: Mode-specific operations plus return to normal
-- **Special states**: Priority messages for clipboard operations, errors, fullscreen, floating panes
+- **Special states**: Enhanced priority messages for clipboard operations, errors, fullscreen, floating panes
+- **Visual consistency**: Color-coded keys and modifiers matching original theme system
 
 ## Technical Implementation
 
 ### Architecture Changes
 - **Before**: Complex multi-line system with ~4000+ lines across multiple UI files
-- **After**: Simplified single-line system with ~300 lines focused on keybinding display
-- **Reduction**: ~94% code reduction while preserving intelligent keybinding detection
+- **After**: Enhanced single-line system with ~750 lines integrating original styling and priority logic
+- **Reduction**: ~81% code reduction while preserving intelligent keybinding detection and visual fidelity
 
 ### Key Components
 
 #### Core Files
-- `src/main.rs` (227 lines): Plugin state management, zjstatus pipe integration, helper functions
-- `src/ui.rs` (244 lines): Single-line UI with priority-based display logic
-- `src/tip/` (preserved): Intelligent tip system infrastructure (currently unused but maintained)
+- `src/main.rs` (495 lines): Plugin state management, zjstatus pipe integration, enhanced color system, and helper functions
+- `src/ui.rs` (624 lines): Single-line UI with enhanced priority-based display logic and original styling functions
+- `src/tip/` (preserved): Intelligent tip system infrastructure (maintained for future integration)
+
+#### Enhanced Features Integration
+- **Color System**: Complete `ColoredElements` and `SegmentStyle` structures from original
+- **Key Styling**: Full `style_key_with_modifier()` implementation with palette-based theming
+- **Priority Functions**: `fullscreen_panes_to_hide()`, `floating_panes_are_visible()`, locked variants
+- **Enhanced Tips**: Mode-specific actions including fullscreen, floating, embed, break pane operations
 
 #### Removed Files
 - `src/first_line.rs` (1,169 lines): Top-line tab/mode display
@@ -51,27 +60,46 @@ pipe_message_to_plugin(
 - Uses zellij's plugin-to-plugin communication system
 - Maintains compatibility with existing zjstatus configuration
 
-#### Priority Display System
-1. **Highest**: Clipboard operation messages
-2. **High**: System clipboard errors  
-3. **Medium**: Special tab states (fullscreen, floating panes)
-4. **Default**: Mode-specific keybinding hints
+#### Enhanced Priority Display System
+1. **Highest**: Clipboard operation messages with original styling
+2. **High**: System clipboard errors with red color coding
+3. **Medium**: Enhanced special tab states with detailed contextual information:
+   - `(FULLSCREEN): + N hidden panes` with orange/green color coding
+   - `(FLOATING PANES VISIBLE): Press <key>, <key> to hide` with instructional text
+   - Locked interface variants: `-- INTERFACE LOCKED --` with appropriate state info
+4. **Default**: Enhanced mode-specific keybinding hints with color-coded keys
+
+### Enhanced Visual System
+
+#### Color Coding
+- **Orange**: Key modifiers (Ctrl, Alt) and status indicators (FULLSCREEN, FLOATING PANES)
+- **Green**: Individual keys and numeric values
+- **Regular text**: Brackets, separators, and descriptive text
+- **Red**: Error states (clipboard failures)
+- **Dimmed/Italic**: Disabled states
+
+#### Key Display Intelligence
+- **Common Modifiers**: `Ctrl + <p|t|r>` format when keys share modifiers
+- **Special Groups**: `<hjkl>`, `<←↓↑→>` displayed without separators
+- **Mixed Modifiers**: `<Alt a|Ctrl b|c>` when keys have different modifiers
 
 ### Dynamic Keybinding Detection
 
 The plugin intelligently reads the user's actual zellij keybinding configuration and displays only bound keys:
 
 #### Normal Mode Display
-Shows available mode-switching keys:
+Shows available mode-switching keys with enhanced color coding:
 ```
-<Ctrl+p>:pane <Ctrl+t>:tab <Ctrl+r>:resize <Ctrl+h>:move <Ctrl+s>:scroll <Ctrl+/>:search <Ctrl+o>:session
+<Ctrl+p>:pane <Ctrl+t>:tab <Ctrl+r>:resize <Ctrl+h>:move <Ctrl+s>:scroll <Ctrl+/>:search <Ctrl+o>:session <Ctrl+q>:quit
 ```
 
-#### Mode-Specific Display
-Each mode shows its primary operations:
-- **Pane**: `<n>:new <x>:close <w>:float <Enter>:normal`
-- **Tab**: `<n>:new <x>:close <Enter>:normal`
-- **Resize**: `<+>:grow <->:shrink <Enter>:normal`
+#### Enhanced Mode-Specific Display
+Each mode shows comprehensive operations with original action set:
+- **Pane**: `<n>:new <x>:close <f>:fullscreen <w>:floating <e>:embed <Enter>:normal`
+- **Tab**: `<n>:new <x>:close <h>:prev <l>:next <b>:break pane <Enter>:normal`
+- **Resize**: `<+>:+ <->:- <Enter>:normal`
+- **Scroll**: `</>:search <j>:down <k>:up <d>:page down <u>:page up <e>:edit <Enter>:normal`
+- **Search**: `</>:search <n>:next <N>:prev <Enter>:normal`
 
 ## Build Process
 
@@ -104,11 +132,14 @@ This infrastructure could be re-integrated if sentence-based tips are desired in
 
 ## Development Notes
 
-### Helper Functions
-Key helper functions preserved from original implementation:
+### Enhanced Helper Functions
+Key helper functions restored and enhanced from original implementation:
 - `action_key()`: Find keys bound to specific actions
-- `action_key_group()`: Find keys for action groups
-- `style_key_with_modifier()`: Apply consistent key styling
+- `action_key_group()`: Find keys for action groups  
+- `style_key_with_modifier()`: Full original implementation with palette-based theming
+- `get_common_modifiers()`: Detect shared modifiers across key groups
+- `color_elements()`: Generate complete color theming system
+- Priority display functions: `fullscreen_panes_to_hide()`, `floating_panes_are_visible()`, etc.
 
 ### Testing Approach
 - Verify compilation after each major change
@@ -121,3 +152,24 @@ Key helper functions preserved from original implementation:
 - Focus on functionality over documentation
 - Consistent with existing zellij plugin patterns
 - Single-line focus throughout UI logic
+- Preserves original visual consistency and user experience
+
+## Recent Enhancements (Latest Update)
+
+### Visual Fidelity Restoration
+- **Complete Color System**: Integrated original `ColoredElements` and `SegmentStyle` structures
+- **Palette Integration**: Uses zellij's theme system for consistent colors across different themes
+- **Enhanced Key Styling**: Restored sophisticated key grouping and modifier handling
+
+### Priority System Enhancement
+- **Rich Context Messages**: Fullscreen and floating pane states show detailed, actionable information
+- **Intelligent State Handling**: Different behavior for Normal/Locked vs other modes
+- **Visual Consistency**: Maintains original color coding and formatting
+
+### Expanded Action Coverage
+- **Comprehensive Mode Support**: All modes now show relevant actions from original implementation
+- **Enhanced Pane Actions**: Includes fullscreen, floating, embed operations with proper key detection
+- **Tab Operations**: Added navigation (prev/next) and break pane functionality
+- **Scroll Enhancements**: Complete scroll mode with search, paging, and edit operations
+
+The plugin now provides the full visual experience of the original while maintaining the streamlined single-line architecture optimized for zjstatus integration.
