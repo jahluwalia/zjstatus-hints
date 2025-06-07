@@ -4,6 +4,8 @@ A [Zellij](https://github.com/zellij-org/zellij) plugin that displays context-aw
 
 ![2025-06-06_16-23-55_region](https://github.com/user-attachments/assets/cfb93423-f37c-410a-aca9-a49290312d0e)
 
+https://github.com/user-attachments/assets/940a31a0-86de-469d-89e2-dab18a1aaca8
+
 ## Rationale
 
 Zjstatus is an excellent plugin, but it lacks the ability to display keybinding hints for your current mode, as the built-in Zellij status-bar plugin allows. This plugin adds that functionality to zjstatus, so you can have the best of both worlds.
