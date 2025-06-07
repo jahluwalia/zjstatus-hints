@@ -19,7 +19,7 @@ First, install and configure [zjstatus](https://github.com/dj95/zjstatus). Then,
 
 ```kdl
 plugins {
-    zjstatus-hints location="https://github.com/b0o/zjstatus-hints/releases/download/latest/zjstatus-hints.wasm" {
+    zjstatus-hints location="https://github.com/b0o/zjstatus-hints/releases/latest/download/zjstatus-hints.wasm" {
         max_length "0" // 0 = unlimited
         overflow_str "..." // default
         pipe_name "zjstatus_hints" // default
