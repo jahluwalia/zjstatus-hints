@@ -22,12 +22,72 @@ register_plugin!(State);
 
 const TO_NORMAL: Action = Action::SwitchToMode(InputMode::Normal);
 
-fn get_common_modifiers(mut keyvec: Vec<&KeyWithModifier>) -> Vec<KeyModifier> {
-    if keyvec.is_empty() {
+const PLUGIN_SESSION_MANAGER: &str = "session-manager";
+const PLUGIN_CONFIGURATION: &str = "configuration";
+const PLUGIN_MANAGER: &str = "plugin-manager";
+const PLUGIN_ABOUT: &str = "zellij:about";
+
+const KEY_PATTERNS_NO_SEPARATOR: &[&str] = &["HJKL", "hjkl", "←↓↑→", "←→", "↓↑", "[]"];
+
+const DEFAULT_MAX_LENGTH: usize = 0;
+const DEFAULT_OVERFLOW_STR: &str = "...";
+const DEFAULT_PIPE_NAME: &str = "zjstatus_hints";
+
+type ActionLabel = (Action, &'static str);
+type ActionSequenceLabel = (&'static [Action], &'static str);
+
+const NORMAL_MODE_ACTIONS: &[ActionLabel] = &[
+    (Action::SwitchToMode(InputMode::Pane), "pane"),
+    (Action::SwitchToMode(InputMode::Tab), "tab"),
+    (Action::SwitchToMode(InputMode::Resize), "resize"),
+    (Action::SwitchToMode(InputMode::Move), "move"),
+    (Action::SwitchToMode(InputMode::Scroll), "scroll"),
+    (Action::SwitchToMode(InputMode::Search), "search"),
+    (Action::SwitchToMode(InputMode::Session), "session"),
+    (Action::Quit, "quit"),
+];
+
+const PANE_MODE_ACTION_SEQUENCES: &[ActionSequenceLabel] = &[
+    (&[Action::NewPane(None, None, false), TO_NORMAL], "new"),
+    (&[Action::CloseFocus, TO_NORMAL], "close"),
+    (&[Action::ToggleFocusFullscreen, TO_NORMAL], "fullscreen"),
+    (&[Action::ToggleFloatingPanes, TO_NORMAL], "floating"),
+    (&[Action::TogglePaneEmbedOrFloating, TO_NORMAL], "embed"),
+    (
+        &[
+            Action::NewPane(Some(Direction::Right), None, false),
+            TO_NORMAL,
+        ],
+        "split right",
+    ),
+    (
+        &[
+            Action::NewPane(Some(Direction::Down), None, false),
+            TO_NORMAL,
+        ],
+        "split down",
+    ),
+];
+
+const TAB_MODE_ACTION_SEQUENCES: &[ActionSequenceLabel] = &[
+    (
+        &[
+            Action::NewTab(None, vec![], None, None, None, true),
+            TO_NORMAL,
+        ],
+        "new",
+    ),
+    (&[Action::CloseTab, TO_NORMAL], "close"),
+    (&[Action::BreakPane, TO_NORMAL], "break pane"),
+    (&[Action::ToggleActiveSyncTab, TO_NORMAL], "sync"),
+];
+
+fn get_common_modifiers(mut key_bindings: Vec<&KeyWithModifier>) -> Vec<KeyModifier> {
+    if key_bindings.is_empty() {
         return vec![];
     }
-    let mut common_modifiers = keyvec.pop().unwrap().key_modifiers.clone();
-    for key in keyvec {
+    let mut common_modifiers = key_bindings.pop().unwrap().key_modifiers.clone();
+    for key in key_bindings {
         common_modifiers = common_modifiers
             .intersection(&key.key_modifiers)
             .cloned()
@@ -41,15 +101,15 @@ impl ZellijPlugin for State {
         self.max_length = configuration
             .get("max_length")
             .and_then(|s| s.parse().ok())
-            .unwrap_or(0);
+            .unwrap_or(DEFAULT_MAX_LENGTH);
         self.overflow_str = configuration
             .get("overflow_str")
             .cloned()
-            .unwrap_or_else(|| "...".to_string());
+            .unwrap_or_else(|| DEFAULT_OVERFLOW_STR.to_string());
         self.pipe_name = configuration
             .get("pipe_name")
             .cloned()
-            .unwrap_or_else(|| "zjstatus_hints".to_string());
+            .unwrap_or_else(|| DEFAULT_PIPE_NAME.to_string());
 
         request_permission(&[
             PermissionType::ReadApplicationState,
@@ -97,6 +157,53 @@ impl ZellijPlugin for State {
     }
 }
 
+struct AnsiParser<'a> {
+    chars: std::iter::Peekable<std::str::Chars<'a>>,
+}
+
+impl<'a> AnsiParser<'a> {
+    fn new(text: &'a str) -> Self {
+        Self {
+            chars: text.chars().peekable(),
+        }
+    }
+
+    fn next_segment(&mut self) -> Option<AnsiSegment> {
+        let ch = self.chars.next()?;
+
+        if ch == '\x1b' {
+            let mut escape_seq = String::from(ch);
+            for escape_ch in self.chars.by_ref() {
+                escape_seq.push(escape_ch);
+                if escape_ch == 'm' {
+                    break;
+                }
+            }
+            Some(AnsiSegment::EscapeSequence(escape_seq))
+        } else {
+            Some(AnsiSegment::VisibleChar(ch))
+        }
+    }
+}
+
+enum AnsiSegment {
+    EscapeSequence(String),
+    VisibleChar(char),
+}
+
+fn calculate_visible_length(text: &str) -> usize {
+    let mut parser = AnsiParser::new(text);
+    let mut len = 0;
+
+    while let Some(segment) = parser.next_segment() {
+        if matches!(segment, AnsiSegment::VisibleChar(_)) {
+            len += 1;
+        }
+    }
+
+    len
+}
+
 fn truncate_ansi_string(text: &str, overflow_str: &str, max_len: usize) -> String {
     let visible_len = calculate_visible_length(text);
     let overflow_len = overflow_str.len();
@@ -111,25 +218,21 @@ fn truncate_ansi_string(text: &str, overflow_str: &str, max_len: usize) -> Strin
 
     let target_len = max_len - overflow_len;
     let mut result = String::new();
-    let mut current_len = 0;
-    let chars = text.chars();
-    let mut in_escape = false;
+    let mut visible_count = 0;
+    let mut parser = AnsiParser::new(text);
 
-    for ch in chars {
-        if ch == '\x1b' {
-            in_escape = true;
-            result.push(ch);
-        } else if in_escape {
-            result.push(ch);
-            if ch == 'm' {
-                in_escape = false;
+    while let Some(segment) = parser.next_segment() {
+        match segment {
+            AnsiSegment::EscapeSequence(seq) => {
+                result.push_str(&seq);
             }
-        } else {
-            if current_len >= target_len {
-                break;
+            AnsiSegment::VisibleChar(ch) => {
+                if visible_count >= target_len {
+                    break;
+                }
+                result.push(ch);
+                visible_count += 1;
             }
-            result.push(ch);
-            current_len += 1;
         }
     }
 
@@ -137,40 +240,26 @@ fn truncate_ansi_string(text: &str, overflow_str: &str, max_len: usize) -> Strin
     result
 }
 
-fn calculate_visible_length(text: &str) -> usize {
-    let mut len = 0;
-    let chars = text.chars();
-    let mut in_escape = false;
-
-    for ch in chars {
-        if ch == '\x1b' {
-            in_escape = true;
-        } else if in_escape {
-            if ch == 'm' {
-                in_escape = false;
-            }
-        } else {
-            len += 1;
-        }
-    }
-
-    len
-}
-
-fn action_key(
+fn find_keys_for_actions(
     keymap: &[(KeyWithModifier, Vec<Action>)],
-    action: &[Action],
+    target_actions: &[Action],
+    exact_match: bool,
 ) -> Vec<KeyWithModifier> {
     keymap
         .iter()
-        .filter_map(|(key, acvec)| {
-            let matching = acvec
-                .iter()
-                .zip(action)
-                .filter(|(a, b)| a.shallow_eq(b))
-                .count();
-
-            if matching == acvec.len() && matching == action.len() {
+        .filter_map(|(key, key_actions)| {
+            if exact_match {
+                let matching = key_actions
+                    .iter()
+                    .zip(target_actions)
+                    .filter(|(a, b)| a.shallow_eq(b))
+                    .count();
+                if matching == key_actions.len() && matching == target_actions.len() {
+                    Some(key.clone())
+                } else {
+                    None
+                }
+            } else if key_actions.iter().next() == target_actions.iter().next() {
                 Some(key.clone())
             } else {
                 None
@@ -179,92 +268,85 @@ fn action_key(
         .collect()
 }
 
-fn action_key_group(
+fn find_keys_for_action_groups(
     keymap: &[(KeyWithModifier, Vec<Action>)],
-    actions: &[&[Action]],
+    action_groups: &[&[Action]],
 ) -> Vec<KeyWithModifier> {
-    let mut ret = vec![];
-    for action in actions {
-        ret.extend(action_key(keymap, action));
-    }
-    ret
-}
-
-fn single_action_key(
-    keymap: &[(KeyWithModifier, Vec<Action>)],
-    action: &[Action],
-) -> Vec<KeyWithModifier> {
-    let mut matching = keymap.iter().find_map(|(key, acvec)| {
-        if acvec.iter().next() == action.iter().next() {
-            Some(key.clone())
-        } else {
-            None
-        }
-    });
-    if let Some(matching) = matching.take() {
-        vec![matching]
-    } else {
-        vec![]
-    }
-}
-
-fn style_key_with_modifier(
-    keyvec: &[KeyWithModifier],
-    palette: &Styling,
-) -> Vec<ANSIString<'static>> {
-    if keyvec.is_empty() {
-        return vec![];
-    }
-
-    let saturated_bg = palette_match!(palette.ribbon_unselected.background);
-    let contrasting_fg = palette_match!(palette.ribbon_unselected.base);
-    let mut ret = vec![];
-
-    let common_modifiers = get_common_modifiers(keyvec.iter().collect());
-
-    let modifier_str = common_modifiers
+    action_groups
         .iter()
-        .map(|m| m.to_string())
-        .collect::<Vec<_>>()
-        .join("-");
+        .flat_map(|actions| find_keys_for_actions(keymap, actions, true))
+        .collect()
+}
 
-    let key_display = keyvec
+fn format_modifier_string(modifiers: &[KeyModifier]) -> String {
+    if modifiers.is_empty() {
+        String::new()
+    } else {
+        modifiers
+            .iter()
+            .map(|m| m.to_string())
+            .collect::<Vec<_>>()
+            .join("-")
+    }
+}
+
+fn format_key_display(
+    key_bindings: &[KeyWithModifier],
+    common_modifiers: &[KeyModifier],
+) -> Vec<String> {
+    key_bindings
         .iter()
         .map(|key| {
             if common_modifiers.is_empty() {
                 format!("{}", key)
             } else {
-                let key_modifier_for_key = key
+                let unique_modifiers = key
                     .key_modifiers
                     .iter()
                     .filter(|m| !common_modifiers.contains(m))
                     .map(|m| m.to_string())
                     .collect::<Vec<_>>()
                     .join(" ");
-                if key_modifier_for_key.is_empty() {
+                if unique_modifiers.is_empty() {
                     format!("{}", key.bare_key)
                 } else {
-                    format!("{} {}", key_modifier_for_key, key.bare_key)
+                    format!("{} {}", unique_modifiers, key.bare_key)
                 }
             }
         })
-        .collect::<Vec<String>>();
+        .collect()
+}
 
+fn get_key_separator(key_display: &[String]) -> &'static str {
     let key_string = key_display.join("");
-    let key_separator = match &key_string[..] {
-        "HJKL" => "",
-        "hjkl" => "",
-        "←↓↑→" => "",
-        "←→" => "",
-        "↓↑" => "",
-        "[]" => "",
-        _ => "|",
-    };
+    if KEY_PATTERNS_NO_SEPARATOR.contains(&&key_string[..]) {
+        ""
+    } else {
+        "|"
+    }
+}
 
-    ret.push(Style::new().paint(" "));
+fn style_key_with_modifier(
+    key_bindings: &[KeyWithModifier],
+    palette: &Styling,
+) -> Vec<ANSIString<'static>> {
+    if key_bindings.is_empty() {
+        return vec![];
+    }
+
+    let saturated_bg = palette_match!(palette.ribbon_unselected.background);
+    let contrasting_fg = palette_match!(palette.ribbon_unselected.base);
+    let mut styled_parts = vec![];
+
+    let common_modifiers = get_common_modifiers(key_bindings.iter().collect());
+    let modifier_str = format_modifier_string(&common_modifiers);
+    let key_display = format_key_display(key_bindings, &common_modifiers);
+    let key_separator = get_key_separator(&key_display);
+
+    styled_parts.push(Style::new().paint(" "));
 
     if !modifier_str.is_empty() {
-        ret.push(
+        styled_parts.push(
             Style::new()
                 .fg(contrasting_fg)
                 .on(saturated_bg)
@@ -272,19 +354,19 @@ fn style_key_with_modifier(
                 .paint(format!(" {} + ", modifier_str)),
         );
     } else {
-        ret.push(Style::new().fg(contrasting_fg).on(saturated_bg).paint(" "));
+        styled_parts.push(Style::new().fg(contrasting_fg).on(saturated_bg).paint(" "));
     }
 
     for (idx, key) in key_display.iter().enumerate() {
         if idx > 0 && !key_separator.is_empty() {
-            ret.push(
+            styled_parts.push(
                 Style::new()
                     .fg(contrasting_fg)
                     .on(saturated_bg)
                     .paint(key_separator),
             );
         }
-        ret.push(
+        styled_parts.push(
             Style::new()
                 .fg(contrasting_fg)
                 .on(saturated_bg)
@@ -293,9 +375,9 @@ fn style_key_with_modifier(
         );
     }
 
-    ret.push(Style::new().fg(contrasting_fg).on(saturated_bg).paint(" "));
+    styled_parts.push(Style::new().fg(contrasting_fg).on(saturated_bg).paint(" "));
 
-    ret
+    styled_parts
 }
 
 fn style_description(description: &str, palette: &Styling) -> Vec<ANSIString<'static>> {
@@ -308,158 +390,82 @@ fn style_description(description: &str, palette: &Styling) -> Vec<ANSIString<'st
         .paint(format!(" {} ", description))]
 }
 
-fn session_manager_key(keymap: &[(KeyWithModifier, Vec<Action>)]) -> Vec<KeyWithModifier> {
-    let mut matching = keymap.iter().find_map(|(key, acvec)| {
-        let has_match = acvec.iter().any(|a| a.launches_plugin("session-manager"));
-        if has_match {
+fn plugin_key(
+    keymap: &[(KeyWithModifier, Vec<Action>)],
+    plugin_name: &str,
+) -> Option<KeyWithModifier> {
+    keymap.iter().find_map(|(key, key_actions)| {
+        if key_actions
+            .iter()
+            .any(|action| action.launches_plugin(plugin_name))
+        {
             Some(key.clone())
         } else {
             None
         }
-    });
-    if let Some(matching) = matching.take() {
-        vec![matching]
+    })
+}
+
+fn get_select_key(keymap: &[(KeyWithModifier, Vec<Action>)]) -> Vec<KeyWithModifier> {
+    let to_normal_keys = find_keys_for_actions(keymap, &[TO_NORMAL], true);
+    if to_normal_keys.contains(&KeyWithModifier::new(BareKey::Enter)) {
+        vec![KeyWithModifier::new(BareKey::Enter)]
     } else {
-        vec![]
+        to_normal_keys.into_iter().take(1).collect()
     }
 }
 
-fn plugin_manager_key(keymap: &[(KeyWithModifier, Vec<Action>)]) -> Vec<KeyWithModifier> {
-    let mut matching = keymap.iter().find_map(|(key, acvec)| {
-        let has_match = acvec.iter().any(|a| a.launches_plugin("plugin-manager"));
-        if has_match {
-            Some(key.clone())
-        } else {
-            None
-        }
-    });
-    if let Some(matching) = matching.take() {
-        vec![matching]
-    } else {
-        vec![]
+fn add_hint(
+    parts: &mut Vec<ANSIString<'static>>,
+    keys: &[KeyWithModifier],
+    description: &str,
+    colors: &Styling,
+) {
+    if !keys.is_empty() {
+        let styled_keys = style_key_with_modifier(keys, colors);
+        parts.extend(styled_keys);
+        let styled_desc = style_description(description, colors);
+        parts.extend(styled_desc);
     }
 }
 
-fn about_key(keymap: &[(KeyWithModifier, Vec<Action>)]) -> Vec<KeyWithModifier> {
-    let mut matching = keymap.iter().find_map(|(key, acvec)| {
-        let has_match = acvec.iter().any(|a| a.launches_plugin("zellij:about"));
-        if has_match {
-            Some(key.clone())
-        } else {
-            None
-        }
-    });
-    if let Some(matching) = matching.take() {
-        vec![matching]
-    } else {
-        vec![]
-    }
-}
-
-fn configuration_key(keymap: &[(KeyWithModifier, Vec<Action>)]) -> Vec<KeyWithModifier> {
-    let mut matching = keymap.iter().find_map(|(key, acvec)| {
-        let has_match = acvec.iter().any(|a| a.launches_plugin("configuration"));
-        if has_match {
-            Some(key.clone())
-        } else {
-            None
-        }
-    });
-    if let Some(matching) = matching.take() {
-        vec![matching]
-    } else {
-        vec![]
-    }
-}
-
-fn render_hints(mode_info: &ModeInfo, max_len: usize) -> String {
-    let keymap = match mode_info.mode {
-        InputMode::Normal => mode_info.get_keybinds_for_mode(InputMode::Normal),
-        InputMode::Pane => mode_info.get_keybinds_for_mode(InputMode::Pane),
-        InputMode::Tab => mode_info.get_keybinds_for_mode(InputMode::Tab),
-        InputMode::Resize => mode_info.get_keybinds_for_mode(InputMode::Resize),
-        InputMode::Move => mode_info.get_keybinds_for_mode(InputMode::Move),
-        InputMode::Scroll => mode_info.get_keybinds_for_mode(InputMode::Scroll),
-        InputMode::Search => mode_info.get_keybinds_for_mode(InputMode::Search),
-        InputMode::Session => mode_info.get_keybinds_for_mode(InputMode::Session),
-        _ => mode_info.get_mode_keybinds(),
-    };
+fn render_hints_for_mode(
+    mode: InputMode,
+    keymap: &[(KeyWithModifier, Vec<Action>)],
+    colors: &Styling,
+) -> Vec<ANSIString<'static>> {
     let mut parts = vec![];
+    let select_keys = get_select_key(keymap);
 
-    match mode_info.mode {
+    match mode {
         InputMode::Normal => {
-            let keybindings = [
-                (Action::SwitchToMode(InputMode::Pane), "pane"),
-                (Action::SwitchToMode(InputMode::Tab), "tab"),
-                (Action::SwitchToMode(InputMode::Resize), "resize"),
-                (Action::SwitchToMode(InputMode::Move), "move"),
-                (Action::SwitchToMode(InputMode::Scroll), "scroll"),
-                (Action::SwitchToMode(InputMode::Search), "search"),
-                (Action::SwitchToMode(InputMode::Session), "session"),
-                (Action::Quit, "quit"),
-            ];
-
-            for (action, label) in keybindings {
-                let keys = action_key(&keymap, &[action]);
-                if !keys.is_empty() {
-                    let styled_keys = style_key_with_modifier(&keys, &mode_info.style.colors);
-                    parts.extend(styled_keys);
-                    parts.push(Style::new().paint(format!(" {} ", label)));
-                }
+            for (action, label) in NORMAL_MODE_ACTIONS {
+                let keys = find_keys_for_actions(keymap, &[action.clone()], true);
+                add_hint(&mut parts, &keys, label, colors);
             }
         }
         InputMode::Pane => {
-            let pane_actions = [
-                (&[Action::NewPane(None, None, false), TO_NORMAL][..], "new"),
-                (&[Action::CloseFocus, TO_NORMAL][..], "close"),
-                (
-                    &[Action::ToggleFocusFullscreen, TO_NORMAL][..],
-                    "fullscreen",
-                ),
-                (&[Action::ToggleFloatingPanes, TO_NORMAL][..], "floating"),
-                (&[Action::TogglePaneEmbedOrFloating, TO_NORMAL][..], "embed"),
-                (
-                    &[
-                        Action::NewPane(Some(Direction::Right), None, false),
-                        TO_NORMAL,
-                    ][..],
-                    "split right",
-                ),
-                (
-                    &[
-                        Action::NewPane(Some(Direction::Down), None, false),
-                        TO_NORMAL,
-                    ][..],
-                    "split down",
-                ),
-            ];
-
-            for (actions, label) in pane_actions {
-                let keys = single_action_key(&keymap, actions);
+            for (actions, label) in PANE_MODE_ACTION_SEQUENCES {
+                let keys = find_keys_for_actions(keymap, actions, false);
                 if !keys.is_empty() {
-                    let styled_keys = style_key_with_modifier(&keys, &mode_info.style.colors);
-                    parts.extend(styled_keys);
-                    parts.push(Style::new().paint(format!(" {} ", label)));
+                    add_hint(&mut parts, &keys, label, colors);
                 }
             }
 
-            let rename_keys = single_action_key(
-                &keymap,
+            let rename_keys = find_keys_for_actions(
+                keymap,
                 &[
                     Action::SwitchToMode(InputMode::RenamePane),
                     Action::PaneNameInput(vec![0]),
                 ],
+                false,
             );
             if !rename_keys.is_empty() {
-                let styled_keys = style_key_with_modifier(&rename_keys, &mode_info.style.colors);
-                parts.extend(styled_keys);
-                let styled_desc = style_description("rename", &mode_info.style.colors);
-                parts.extend(styled_desc);
+                add_hint(&mut parts, &rename_keys, "rename", colors);
             }
 
-            // FIXME
-            let focus_keys = action_key_group(
-                &keymap,
+            let focus_keys = find_keys_for_action_groups(
+                keymap,
                 &[
                     &[Action::MoveFocus(Direction::Left)],
                     &[Action::MoveFocus(Direction::Down)],
@@ -467,65 +473,31 @@ fn render_hints(mode_info: &ModeInfo, max_len: usize) -> String {
                     &[Action::MoveFocus(Direction::Right)],
                 ],
             );
-            if !focus_keys.is_empty() {
-                let styled_keys = style_key_with_modifier(&focus_keys, &mode_info.style.colors);
-                parts.extend(styled_keys);
-                let styled_desc = style_description("move", &mode_info.style.colors);
-                parts.extend(styled_desc);
-            }
-
-            let to_normal_keys = action_key(&keymap, &[TO_NORMAL]);
-            let select_key = if to_normal_keys.contains(&KeyWithModifier::new(BareKey::Enter)) {
-                vec![KeyWithModifier::new(BareKey::Enter)]
-            } else {
-                to_normal_keys.into_iter().take(1).collect()
-            };
-            if !select_key.is_empty() {
-                let styled_keys = style_key_with_modifier(&select_key, &mode_info.style.colors);
-                parts.extend(styled_keys);
-                let styled_desc = style_description("select", &mode_info.style.colors);
-                parts.extend(styled_desc);
-            }
+            add_hint(&mut parts, &focus_keys, "move", colors);
+            add_hint(&mut parts, &select_keys, "select", colors);
         }
         InputMode::Tab => {
-            let tab_actions = [
-                (
-                    &[
-                        Action::NewTab(None, vec![], None, None, None, true),
-                        TO_NORMAL,
-                    ][..],
-                    "new",
-                ),
-                (&[Action::CloseTab, TO_NORMAL][..], "close"),
-                (&[Action::BreakPane, TO_NORMAL][..], "break pane"),
-                (&[Action::ToggleActiveSyncTab, TO_NORMAL][..], "sync"),
-            ];
-
-            for (actions, label) in tab_actions {
-                let keys = single_action_key(&keymap, actions);
+            for (actions, label) in TAB_MODE_ACTION_SEQUENCES {
+                let keys = find_keys_for_actions(keymap, actions, false);
                 if !keys.is_empty() {
-                    let styled_keys = style_key_with_modifier(&keys, &mode_info.style.colors);
-                    parts.extend(styled_keys);
-                    parts.push(Style::new().paint(format!(" {} ", label)));
+                    add_hint(&mut parts, &keys, label, colors);
                 }
             }
 
-            let rename_keys = single_action_key(
-                &keymap,
+            let rename_keys = find_keys_for_actions(
+                keymap,
                 &[
                     Action::SwitchToMode(InputMode::RenameTab),
                     Action::TabNameInput(vec![0]),
                 ],
+                false,
             );
             if !rename_keys.is_empty() {
-                let styled_keys = style_key_with_modifier(&rename_keys, &mode_info.style.colors);
-                parts.extend(styled_keys);
-                let styled_desc = style_description("rename", &mode_info.style.colors);
-                parts.extend(styled_desc);
+                add_hint(&mut parts, &rename_keys, "rename", colors);
             }
 
-            let focus_keys_full = action_key_group(
-                &keymap,
+            let focus_keys_full = find_keys_for_action_groups(
+                keymap,
                 &[&[Action::GoToPreviousTab], &[Action::GoToNextTab]],
             );
             let focus_keys = if focus_keys_full.contains(&KeyWithModifier::new(BareKey::Left))
@@ -538,43 +510,21 @@ fn render_hints(mode_info: &ModeInfo, max_len: usize) -> String {
             } else {
                 focus_keys_full
             };
-            if !focus_keys.is_empty() {
-                let styled_keys = style_key_with_modifier(&focus_keys, &mode_info.style.colors);
-                parts.extend(styled_keys);
-                let styled_desc = style_description("move", &mode_info.style.colors);
-                parts.extend(styled_desc);
-            }
-
-            let to_normal_keys = action_key(&keymap, &[TO_NORMAL]);
-            let select_key = if to_normal_keys.contains(&KeyWithModifier::new(BareKey::Enter)) {
-                vec![KeyWithModifier::new(BareKey::Enter)]
-            } else {
-                to_normal_keys.into_iter().take(1).collect()
-            };
-            if !select_key.is_empty() {
-                let styled_keys = style_key_with_modifier(&select_key, &mode_info.style.colors);
-                parts.extend(styled_keys);
-                let styled_desc = style_description("select", &mode_info.style.colors);
-                parts.extend(styled_desc);
-            }
+            add_hint(&mut parts, &focus_keys, "move", colors);
+            add_hint(&mut parts, &select_keys, "select", colors);
         }
         InputMode::Resize => {
-            let resize_keys = action_key_group(
-                &keymap,
+            let resize_keys = find_keys_for_action_groups(
+                keymap,
                 &[
                     &[Action::Resize(Resize::Increase, None)],
                     &[Action::Resize(Resize::Decrease, None)],
                 ],
             );
-            if !resize_keys.is_empty() {
-                let styled_keys = style_key_with_modifier(&resize_keys, &mode_info.style.colors);
-                parts.extend(styled_keys);
-                let styled_desc = style_description("resize", &mode_info.style.colors);
-                parts.extend(styled_desc);
-            }
+            add_hint(&mut parts, &resize_keys, "resize", colors);
 
-            let resize_increase_keys = action_key_group(
-                &keymap,
+            let increase_keys = find_keys_for_action_groups(
+                keymap,
                 &[
                     &[Action::Resize(Resize::Increase, Some(Direction::Left))],
                     &[Action::Resize(Resize::Increase, Some(Direction::Down))],
@@ -582,16 +532,10 @@ fn render_hints(mode_info: &ModeInfo, max_len: usize) -> String {
                     &[Action::Resize(Resize::Increase, Some(Direction::Right))],
                 ],
             );
-            if !resize_increase_keys.is_empty() {
-                let styled_keys =
-                    style_key_with_modifier(&resize_increase_keys, &mode_info.style.colors);
-                parts.extend(styled_keys);
-                let styled_desc = style_description("increase", &mode_info.style.colors);
-                parts.extend(styled_desc);
-            }
+            add_hint(&mut parts, &increase_keys, "increase", colors);
 
-            let resize_decrease_keys = action_key_group(
-                &keymap,
+            let decrease_keys = find_keys_for_action_groups(
+                keymap,
                 &[
                     &[Action::Resize(Resize::Decrease, Some(Direction::Left))],
                     &[Action::Resize(Resize::Decrease, Some(Direction::Down))],
@@ -599,30 +543,12 @@ fn render_hints(mode_info: &ModeInfo, max_len: usize) -> String {
                     &[Action::Resize(Resize::Decrease, Some(Direction::Right))],
                 ],
             );
-            if !resize_decrease_keys.is_empty() {
-                let styled_keys =
-                    style_key_with_modifier(&resize_decrease_keys, &mode_info.style.colors);
-                parts.extend(styled_keys);
-                let styled_desc = style_description("decrease", &mode_info.style.colors);
-                parts.extend(styled_desc);
-            }
-
-            let to_normal_keys = action_key(&keymap, &[TO_NORMAL]);
-            let select_key = if to_normal_keys.contains(&KeyWithModifier::new(BareKey::Enter)) {
-                vec![KeyWithModifier::new(BareKey::Enter)]
-            } else {
-                to_normal_keys.into_iter().take(1).collect()
-            };
-            if !select_key.is_empty() {
-                let styled_keys = style_key_with_modifier(&select_key, &mode_info.style.colors);
-                parts.extend(styled_keys);
-                let styled_desc = style_description("select", &mode_info.style.colors);
-                parts.extend(styled_desc);
-            }
+            add_hint(&mut parts, &decrease_keys, "decrease", colors);
+            add_hint(&mut parts, &select_keys, "select", colors);
         }
         InputMode::Move => {
-            let move_keys = action_key_group(
-                &keymap,
+            let move_keys = find_keys_for_action_groups(
+                keymap,
                 &[
                     &[Action::MovePane(Some(Direction::Left))],
                     &[Action::MovePane(Some(Direction::Down))],
@@ -630,240 +556,129 @@ fn render_hints(mode_info: &ModeInfo, max_len: usize) -> String {
                     &[Action::MovePane(Some(Direction::Right))],
                 ],
             );
-            if !move_keys.is_empty() {
-                let styled_keys = style_key_with_modifier(&move_keys, &mode_info.style.colors);
-                parts.extend(styled_keys);
-                let styled_desc = style_description("move", &mode_info.style.colors);
-                parts.extend(styled_desc);
-            }
-
-            let to_normal_keys = action_key(&keymap, &[TO_NORMAL]);
-            let select_key = if to_normal_keys.contains(&KeyWithModifier::new(BareKey::Enter)) {
-                vec![KeyWithModifier::new(BareKey::Enter)]
-            } else {
-                to_normal_keys.into_iter().take(1).collect()
-            };
-            if !select_key.is_empty() {
-                let styled_keys = style_key_with_modifier(&select_key, &mode_info.style.colors);
-                parts.extend(styled_keys);
-                let styled_desc = style_description("select", &mode_info.style.colors);
-                parts.extend(styled_desc);
-            }
+            add_hint(&mut parts, &move_keys, "move", colors);
+            add_hint(&mut parts, &select_keys, "select", colors);
         }
         InputMode::Scroll => {
-            let search_keys = action_key(
-                &keymap,
+            let search_keys = find_keys_for_actions(
+                keymap,
                 &[
                     Action::SwitchToMode(InputMode::EnterSearch),
                     Action::SearchInput(vec![0]),
                 ],
+                true,
             );
-            if !search_keys.is_empty() {
-                let styled_keys = style_key_with_modifier(&search_keys, &mode_info.style.colors);
-                parts.extend(styled_keys);
-                let styled_desc = style_description("search", &mode_info.style.colors);
-                parts.extend(styled_desc);
-            }
+            add_hint(&mut parts, &search_keys, "search", colors);
 
             let scroll_keys =
-                action_key_group(&keymap, &[&[Action::ScrollDown], &[Action::ScrollUp]]);
-            if !scroll_keys.is_empty() {
-                let styled_keys = style_key_with_modifier(&scroll_keys, &mode_info.style.colors);
-                parts.extend(styled_keys);
-                let styled_desc = style_description("scroll", &mode_info.style.colors);
-                parts.extend(styled_desc);
-            }
+                find_keys_for_action_groups(keymap, &[&[Action::ScrollDown], &[Action::ScrollUp]]);
+            add_hint(&mut parts, &scroll_keys, "scroll", colors);
 
-            let page_scroll_keys = action_key_group(
-                &keymap,
+            let page_scroll_keys = find_keys_for_action_groups(
+                keymap,
                 &[&[Action::PageScrollDown], &[Action::PageScrollUp]],
             );
-            if !page_scroll_keys.is_empty() {
-                let styled_keys =
-                    style_key_with_modifier(&page_scroll_keys, &mode_info.style.colors);
-                parts.extend(styled_keys);
-                let styled_desc = style_description("page", &mode_info.style.colors);
-                parts.extend(styled_desc);
-            }
+            add_hint(&mut parts, &page_scroll_keys, "page", colors);
 
-            let half_page_scroll_keys = action_key_group(
-                &keymap,
+            let half_page_scroll_keys = find_keys_for_action_groups(
+                keymap,
                 &[&[Action::HalfPageScrollDown], &[Action::HalfPageScrollUp]],
             );
-            if !half_page_scroll_keys.is_empty() {
-                let styled_keys =
-                    style_key_with_modifier(&half_page_scroll_keys, &mode_info.style.colors);
-                parts.extend(styled_keys);
-                let styled_desc = style_description("half page", &mode_info.style.colors);
-                parts.extend(styled_desc);
-            }
+            add_hint(&mut parts, &half_page_scroll_keys, "half page", colors);
 
-            let edit_keys = single_action_key(&keymap, &[Action::EditScrollback, TO_NORMAL]);
+            let edit_keys =
+                find_keys_for_actions(keymap, &[Action::EditScrollback, TO_NORMAL], false);
             if !edit_keys.is_empty() {
-                let styled_keys = style_key_with_modifier(&edit_keys, &mode_info.style.colors);
-                parts.extend(styled_keys);
-                let styled_desc = style_description("edit", &mode_info.style.colors);
-                parts.extend(styled_desc);
+                add_hint(&mut parts, &edit_keys, "edit", colors);
             }
-
-            let to_normal_keys = action_key(&keymap, &[TO_NORMAL]);
-            let select_key = if to_normal_keys.contains(&KeyWithModifier::new(BareKey::Enter)) {
-                vec![KeyWithModifier::new(BareKey::Enter)]
-            } else {
-                to_normal_keys.into_iter().take(1).collect()
-            };
-            if !select_key.is_empty() {
-                let styled_keys = style_key_with_modifier(&select_key, &mode_info.style.colors);
-                parts.extend(styled_keys);
-                let styled_desc = style_description("select", &mode_info.style.colors);
-                parts.extend(styled_desc);
-            }
+            add_hint(&mut parts, &select_keys, "select", colors);
         }
         InputMode::Search => {
-            let search_keys = action_key(
-                &keymap,
+            let search_keys = find_keys_for_actions(
+                keymap,
                 &[
                     Action::SwitchToMode(InputMode::EnterSearch),
                     Action::SearchInput(vec![0]),
                 ],
+                true,
             );
-            if !search_keys.is_empty() {
-                let styled_keys = style_key_with_modifier(&search_keys, &mode_info.style.colors);
-                parts.extend(styled_keys);
-                let styled_desc = style_description("search", &mode_info.style.colors);
-                parts.extend(styled_desc);
-            }
+            add_hint(&mut parts, &search_keys, "search", colors);
 
             let scroll_keys =
-                action_key_group(&keymap, &[&[Action::ScrollDown], &[Action::ScrollUp]]);
-            if !scroll_keys.is_empty() {
-                let styled_keys = style_key_with_modifier(&scroll_keys, &mode_info.style.colors);
-                parts.extend(styled_keys);
-                let styled_desc = style_description("scroll", &mode_info.style.colors);
-                parts.extend(styled_desc);
-            }
+                find_keys_for_action_groups(keymap, &[&[Action::ScrollDown], &[Action::ScrollUp]]);
+            add_hint(&mut parts, &scroll_keys, "scroll", colors);
 
-            let page_scroll_keys = action_key_group(
-                &keymap,
+            let page_scroll_keys = find_keys_for_action_groups(
+                keymap,
                 &[&[Action::PageScrollDown], &[Action::PageScrollUp]],
             );
-            if !page_scroll_keys.is_empty() {
-                let styled_keys =
-                    style_key_with_modifier(&page_scroll_keys, &mode_info.style.colors);
-                parts.extend(styled_keys);
-                let styled_desc = style_description("page", &mode_info.style.colors);
-                parts.extend(styled_desc);
-            }
+            add_hint(&mut parts, &page_scroll_keys, "page", colors);
 
-            let half_page_scroll_keys = action_key_group(
-                &keymap,
+            let half_page_scroll_keys = find_keys_for_action_groups(
+                keymap,
                 &[&[Action::HalfPageScrollDown], &[Action::HalfPageScrollUp]],
             );
-            if !half_page_scroll_keys.is_empty() {
-                let styled_keys =
-                    style_key_with_modifier(&half_page_scroll_keys, &mode_info.style.colors);
-                parts.extend(styled_keys);
-                let styled_desc = style_description("half page", &mode_info.style.colors);
-                parts.extend(styled_desc);
-            }
+            add_hint(&mut parts, &half_page_scroll_keys, "half page", colors);
 
-            let search_down_keys = action_key(&keymap, &[Action::Search(SearchDirection::Down)]);
-            if !search_down_keys.is_empty() {
-                let styled_keys =
-                    style_key_with_modifier(&search_down_keys, &mode_info.style.colors);
-                parts.extend(styled_keys);
-                let styled_desc = style_description("down", &mode_info.style.colors);
-                parts.extend(styled_desc);
-            }
+            let down_keys =
+                find_keys_for_actions(keymap, &[Action::Search(SearchDirection::Down)], true);
+            add_hint(&mut parts, &down_keys, "down", colors);
 
-            let search_up_keys = action_key(&keymap, &[Action::Search(SearchDirection::Up)]);
-            if !search_up_keys.is_empty() {
-                let styled_keys = style_key_with_modifier(&search_up_keys, &mode_info.style.colors);
-                parts.extend(styled_keys);
-                let styled_desc = style_description("up", &mode_info.style.colors);
-                parts.extend(styled_desc);
-            }
+            let up_keys =
+                find_keys_for_actions(keymap, &[Action::Search(SearchDirection::Up)], true);
+            add_hint(&mut parts, &up_keys, "up", colors);
 
-            let to_normal_keys = action_key(&keymap, &[TO_NORMAL]);
-            let select_key = if to_normal_keys.contains(&KeyWithModifier::new(BareKey::Enter)) {
-                vec![KeyWithModifier::new(BareKey::Enter)]
-            } else {
-                to_normal_keys.into_iter().take(1).collect()
-            };
-            if !select_key.is_empty() {
-                let styled_keys = style_key_with_modifier(&select_key, &mode_info.style.colors);
-                parts.extend(styled_keys);
-                let styled_desc = style_description("select", &mode_info.style.colors);
-                parts.extend(styled_desc);
-            }
+            add_hint(&mut parts, &select_keys, "select", colors);
         }
         InputMode::Session => {
-            let detach_keys = action_key(&keymap, &[Action::Detach]);
-            if !detach_keys.is_empty() {
-                let styled_keys = style_key_with_modifier(&detach_keys, &mode_info.style.colors);
-                parts.extend(styled_keys);
-                let styled_desc = style_description("detach", &mode_info.style.colors);
-                parts.extend(styled_desc);
+            let detach_keys = find_keys_for_actions(keymap, &[Action::Detach], true);
+            add_hint(&mut parts, &detach_keys, "detach", colors);
+
+            if let Some(manager_key) = plugin_key(keymap, PLUGIN_SESSION_MANAGER) {
+                add_hint(&mut parts, &[manager_key], "manager", colors);
             }
 
-            let manager_keys = session_manager_key(&keymap);
-            if !manager_keys.is_empty() {
-                let styled_keys = style_key_with_modifier(&manager_keys, &mode_info.style.colors);
-                parts.extend(styled_keys);
-                let styled_desc = style_description("manager", &mode_info.style.colors);
-                parts.extend(styled_desc);
+            if let Some(config_key) = plugin_key(keymap, PLUGIN_CONFIGURATION) {
+                add_hint(&mut parts, &[config_key], "config", colors);
             }
 
-            let config_keys = configuration_key(&keymap);
-            if !config_keys.is_empty() {
-                let styled_keys = style_key_with_modifier(&config_keys, &mode_info.style.colors);
-                parts.extend(styled_keys);
-                let styled_desc = style_description("config", &mode_info.style.colors);
-                parts.extend(styled_desc);
+            if let Some(plugin_key_val) = plugin_key(keymap, PLUGIN_MANAGER) {
+                add_hint(&mut parts, &[plugin_key_val], "plugins", colors);
             }
 
-            let plugin_keys = plugin_manager_key(&keymap);
-            if !plugin_keys.is_empty() {
-                let styled_keys = style_key_with_modifier(&plugin_keys, &mode_info.style.colors);
-                parts.extend(styled_keys);
-                let styled_desc = style_description("plugins", &mode_info.style.colors);
-                parts.extend(styled_desc);
+            if let Some(about_key) = plugin_key(keymap, PLUGIN_ABOUT) {
+                add_hint(&mut parts, &[about_key], "about", colors);
             }
 
-            let about_keys = about_key(&keymap);
-            if !about_keys.is_empty() {
-                let styled_keys = style_key_with_modifier(&about_keys, &mode_info.style.colors);
-                parts.extend(styled_keys);
-                let styled_desc = style_description("about", &mode_info.style.colors);
-                parts.extend(styled_desc);
-            }
-
-            let base_mode = mode_info.base_mode;
-            let to_basemode_keys = base_mode
-                .map(|b| action_key(&keymap, &[Action::SwitchToMode(b)]))
-                .unwrap_or_else(|| action_key(&keymap, &[TO_NORMAL]));
-            let select_key = if to_basemode_keys.contains(&KeyWithModifier::new(BareKey::Enter)) {
-                vec![KeyWithModifier::new(BareKey::Enter)]
-            } else {
-                to_basemode_keys.into_iter().take(1).collect()
-            };
-            if !select_key.is_empty() {
-                let styled_keys = style_key_with_modifier(&select_key, &mode_info.style.colors);
-                parts.extend(styled_keys);
-                let styled_desc = style_description("select", &mode_info.style.colors);
-                parts.extend(styled_desc);
-            }
+            add_hint(&mut parts, &select_keys, "select", colors);
         }
         _ => {
-            let keys = action_key(&keymap, &[Action::SwitchToMode(InputMode::Normal)]);
-            if !keys.is_empty() {
-                let styled_keys = style_key_with_modifier(&keys, &mode_info.style.colors);
-                parts.extend(styled_keys);
-                let styled_desc = style_description("normal", &mode_info.style.colors);
-                parts.extend(styled_desc);
-            }
+            let keys =
+                find_keys_for_actions(keymap, &[Action::SwitchToMode(InputMode::Normal)], true);
+            add_hint(&mut parts, &keys, "normal", colors);
         }
     }
+
+    parts
+}
+
+fn get_keymap_for_mode(mode_info: &ModeInfo) -> Vec<(KeyWithModifier, Vec<Action>)> {
+    match mode_info.mode {
+        InputMode::Normal => mode_info.get_keybinds_for_mode(InputMode::Normal),
+        InputMode::Pane => mode_info.get_keybinds_for_mode(InputMode::Pane),
+        InputMode::Tab => mode_info.get_keybinds_for_mode(InputMode::Tab),
+        InputMode::Resize => mode_info.get_keybinds_for_mode(InputMode::Resize),
+        InputMode::Move => mode_info.get_keybinds_for_mode(InputMode::Move),
+        InputMode::Scroll => mode_info.get_keybinds_for_mode(InputMode::Scroll),
+        InputMode::Search => mode_info.get_keybinds_for_mode(InputMode::Search),
+        InputMode::Session => mode_info.get_keybinds_for_mode(InputMode::Session),
+        _ => mode_info.get_mode_keybinds(),
+    }
+}
+
+fn render_hints(mode_info: &ModeInfo, max_len: usize) -> String {
+    let keymap = get_keymap_for_mode(mode_info);
+    let parts = render_hints_for_mode(mode_info.mode, &keymap, &mode_info.style.colors);
 
     if parts.is_empty() {
         return String::new();
