@@ -51,7 +51,7 @@ const PANE_MODE_ACTION_SEQUENCES: &[ActionSequenceLabel] = &[
     (&[Action::NewPane(None, None, false), TO_NORMAL], "new"),
     (&[Action::CloseFocus, TO_NORMAL], "close"),
     (&[Action::ToggleFocusFullscreen, TO_NORMAL], "fullscreen"),
-    (&[Action::ToggleFloatingPanes, TO_NORMAL], "floating"),
+    (&[Action::ToggleFloatingPanes, TO_NORMAL], "float"),
     (&[Action::TogglePaneEmbedOrFloating, TO_NORMAL], "embed"),
     (
         &[
