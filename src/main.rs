@@ -79,29 +79,12 @@ impl ZellijPlugin for State {
     }
 
     fn render(&mut self, _rows: usize, cols: usize) {
-        let background = self.mode_info.style.colors.text_unselected.background;
-        let fill_bg = match background {
-            PaletteColor::Rgb((r, g, b)) => format!("\u{1b}[48;2;{};{};{}m\u{1b}[0K", r, g, b),
-            PaletteColor::EightBit(color) => format!("\u{1b}[48;5;{}m\u{1b}[0K", color),
-        };
-        if self.mode_info.mode == InputMode::Locked && self.base_mode_is_locked {
-            self.display(&fill_bg);
-        } else {
-            self.display(&format!(
-                "{}{}",
-                render_hints(&self.mode_info, cols),
-                fill_bg
-            ));
-        }
-    }
-}
-
-impl State {
-    fn display(&self, message: &str) {
+        // TODO: add config option to determine whether to show hints in locked mode
+        let message = render_hints(&self.mode_info, cols);
         if !message.is_empty() {
-            let visible_len = self.calculate_visible_length(message);
+            let visible_len = calculate_visible_length(&message);
             let output = if self.max_length > 0 && visible_len > self.max_length {
-                self.truncate_ansi_string(message, self.max_length)
+                truncate_ansi_string(&message, &self.overflow_str, self.max_length)
             } else {
                 message.to_string()
             };
@@ -112,66 +95,66 @@ impl State {
             print!("{}", output);
         }
     }
+}
 
-    fn truncate_ansi_string(&self, text: &str, max_len: usize) -> String {
-        let visible_len = self.calculate_visible_length(text);
-        let overflow_len = self.overflow_str.len();
+fn truncate_ansi_string(text: &str, overflow_str: &str, max_len: usize) -> String {
+    let visible_len = calculate_visible_length(text);
+    let overflow_len = overflow_str.len();
 
-        if visible_len <= max_len {
-            return text.to_string();
-        }
-
-        if max_len <= overflow_len {
-            return self.overflow_str.clone();
-        }
-
-        let target_len = max_len - overflow_len;
-        let mut result = String::new();
-        let mut current_len = 0;
-        let chars = text.chars();
-        let mut in_escape = false;
-
-        for ch in chars {
-            if ch == '\x1b' {
-                in_escape = true;
-                result.push(ch);
-            } else if in_escape {
-                result.push(ch);
-                if ch == 'm' {
-                    in_escape = false;
-                }
-            } else {
-                if current_len >= target_len {
-                    break;
-                }
-                result.push(ch);
-                current_len += 1;
-            }
-        }
-
-        result.push_str(&self.overflow_str);
-        result
+    if visible_len <= max_len {
+        return text.to_string();
     }
 
-    fn calculate_visible_length(&self, text: &str) -> usize {
-        let mut len = 0;
-        let chars = text.chars();
-        let mut in_escape = false;
-
-        for ch in chars {
-            if ch == '\x1b' {
-                in_escape = true;
-            } else if in_escape {
-                if ch == 'm' {
-                    in_escape = false;
-                }
-            } else {
-                len += 1;
-            }
-        }
-
-        len
+    if max_len <= overflow_len {
+        return overflow_str.to_string();
     }
+
+    let target_len = max_len - overflow_len;
+    let mut result = String::new();
+    let mut current_len = 0;
+    let chars = text.chars();
+    let mut in_escape = false;
+
+    for ch in chars {
+        if ch == '\x1b' {
+            in_escape = true;
+            result.push(ch);
+        } else if in_escape {
+            result.push(ch);
+            if ch == 'm' {
+                in_escape = false;
+            }
+        } else {
+            if current_len >= target_len {
+                break;
+            }
+            result.push(ch);
+            current_len += 1;
+        }
+    }
+
+    result.push_str(overflow_str);
+    result
+}
+
+fn calculate_visible_length(text: &str) -> usize {
+    let mut len = 0;
+    let chars = text.chars();
+    let mut in_escape = false;
+
+    for ch in chars {
+        if ch == '\x1b' {
+            in_escape = true;
+        } else if in_escape {
+            if ch == 'm' {
+                in_escape = false;
+            }
+        } else {
+            len += 1;
+        }
+    }
+
+    len
 }
 
 fn action_key(
@@ -389,21 +372,21 @@ fn configuration_key(keymap: &[(KeyWithModifier, Vec<Action>)]) -> Vec<KeyWithMo
     }
 }
 
-fn render_hints(help: &ModeInfo, max_len: usize) -> String {
-    let keymap = match help.mode {
-        InputMode::Normal => help.get_keybinds_for_mode(InputMode::Normal),
-        InputMode::Pane => help.get_keybinds_for_mode(InputMode::Pane),
-        InputMode::Tab => help.get_keybinds_for_mode(InputMode::Tab),
-        InputMode::Resize => help.get_keybinds_for_mode(InputMode::Resize),
-        InputMode::Move => help.get_keybinds_for_mode(InputMode::Move),
-        InputMode::Scroll => help.get_keybinds_for_mode(InputMode::Scroll),
-        InputMode::Search => help.get_keybinds_for_mode(InputMode::Search),
-        InputMode::Session => help.get_keybinds_for_mode(InputMode::Session),
-        _ => help.get_mode_keybinds(),
+fn render_hints(mode_info: &ModeInfo, max_len: usize) -> String {
+    let keymap = match mode_info.mode {
+        InputMode::Normal => mode_info.get_keybinds_for_mode(InputMode::Normal),
+        InputMode::Pane => mode_info.get_keybinds_for_mode(InputMode::Pane),
+        InputMode::Tab => mode_info.get_keybinds_for_mode(InputMode::Tab),
+        InputMode::Resize => mode_info.get_keybinds_for_mode(InputMode::Resize),
+        InputMode::Move => mode_info.get_keybinds_for_mode(InputMode::Move),
+        InputMode::Scroll => mode_info.get_keybinds_for_mode(InputMode::Scroll),
+        InputMode::Search => mode_info.get_keybinds_for_mode(InputMode::Search),
+        InputMode::Session => mode_info.get_keybinds_for_mode(InputMode::Session),
+        _ => mode_info.get_mode_keybinds(),
     };
     let mut parts = vec![];
 
-    match help.mode {
+    match mode_info.mode {
         InputMode::Normal => {
             let keybindings = [
                 (Action::SwitchToMode(InputMode::Pane), "pane"),
@@ -419,7 +402,7 @@ fn render_hints(help: &ModeInfo, max_len: usize) -> String {
             for (action, label) in keybindings {
                 let keys = action_key(&keymap, &[action]);
                 if !keys.is_empty() {
-                    let styled_keys = style_key_with_modifier(&keys, &help.style.colors);
+                    let styled_keys = style_key_with_modifier(&keys, &mode_info.style.colors);
                     parts.extend(styled_keys);
                     parts.push(Style::new().paint(format!(" {} ", label)));
                 }
@@ -454,7 +437,7 @@ fn render_hints(help: &ModeInfo, max_len: usize) -> String {
             for (actions, label) in pane_actions {
                 let keys = single_action_key(&keymap, actions);
                 if !keys.is_empty() {
-                    let styled_keys = style_key_with_modifier(&keys, &help.style.colors);
+                    let styled_keys = style_key_with_modifier(&keys, &mode_info.style.colors);
                     parts.extend(styled_keys);
                     parts.push(Style::new().paint(format!(" {} ", label)));
                 }
@@ -468,12 +451,13 @@ fn render_hints(help: &ModeInfo, max_len: usize) -> String {
                 ],
             );
             if !rename_keys.is_empty() {
-                let styled_keys = style_key_with_modifier(&rename_keys, &help.style.colors);
+                let styled_keys = style_key_with_modifier(&rename_keys, &mode_info.style.colors);
                 parts.extend(styled_keys);
-                let styled_desc = style_description("rename", &help.style.colors);
+                let styled_desc = style_description("rename", &mode_info.style.colors);
                 parts.extend(styled_desc);
             }
 
+            // FIXME
             let focus_keys = action_key_group(
                 &keymap,
                 &[
@@ -484,9 +468,9 @@ fn render_hints(help: &ModeInfo, max_len: usize) -> String {
                 ],
             );
             if !focus_keys.is_empty() {
-                let styled_keys = style_key_with_modifier(&focus_keys, &help.style.colors);
+                let styled_keys = style_key_with_modifier(&focus_keys, &mode_info.style.colors);
                 parts.extend(styled_keys);
-                let styled_desc = style_description("move", &help.style.colors);
+                let styled_desc = style_description("move", &mode_info.style.colors);
                 parts.extend(styled_desc);
             }
 
@@ -497,9 +481,9 @@ fn render_hints(help: &ModeInfo, max_len: usize) -> String {
                 to_normal_keys.into_iter().take(1).collect()
             };
             if !select_key.is_empty() {
-                let styled_keys = style_key_with_modifier(&select_key, &help.style.colors);
+                let styled_keys = style_key_with_modifier(&select_key, &mode_info.style.colors);
                 parts.extend(styled_keys);
-                let styled_desc = style_description("select", &help.style.colors);
+                let styled_desc = style_description("select", &mode_info.style.colors);
                 parts.extend(styled_desc);
             }
         }
@@ -520,7 +504,7 @@ fn render_hints(help: &ModeInfo, max_len: usize) -> String {
             for (actions, label) in tab_actions {
                 let keys = single_action_key(&keymap, actions);
                 if !keys.is_empty() {
-                    let styled_keys = style_key_with_modifier(&keys, &help.style.colors);
+                    let styled_keys = style_key_with_modifier(&keys, &mode_info.style.colors);
                     parts.extend(styled_keys);
                     parts.push(Style::new().paint(format!(" {} ", label)));
                 }
@@ -534,9 +518,9 @@ fn render_hints(help: &ModeInfo, max_len: usize) -> String {
                 ],
             );
             if !rename_keys.is_empty() {
-                let styled_keys = style_key_with_modifier(&rename_keys, &help.style.colors);
+                let styled_keys = style_key_with_modifier(&rename_keys, &mode_info.style.colors);
                 parts.extend(styled_keys);
-                let styled_desc = style_description("rename", &help.style.colors);
+                let styled_desc = style_description("rename", &mode_info.style.colors);
                 parts.extend(styled_desc);
             }
 
@@ -555,9 +539,9 @@ fn render_hints(help: &ModeInfo, max_len: usize) -> String {
                 focus_keys_full
             };
             if !focus_keys.is_empty() {
-                let styled_keys = style_key_with_modifier(&focus_keys, &help.style.colors);
+                let styled_keys = style_key_with_modifier(&focus_keys, &mode_info.style.colors);
                 parts.extend(styled_keys);
-                let styled_desc = style_description("move", &help.style.colors);
+                let styled_desc = style_description("move", &mode_info.style.colors);
                 parts.extend(styled_desc);
             }
 
@@ -568,9 +552,9 @@ fn render_hints(help: &ModeInfo, max_len: usize) -> String {
                 to_normal_keys.into_iter().take(1).collect()
             };
             if !select_key.is_empty() {
-                let styled_keys = style_key_with_modifier(&select_key, &help.style.colors);
+                let styled_keys = style_key_with_modifier(&select_key, &mode_info.style.colors);
                 parts.extend(styled_keys);
-                let styled_desc = style_description("select", &help.style.colors);
+                let styled_desc = style_description("select", &mode_info.style.colors);
                 parts.extend(styled_desc);
             }
         }
@@ -583,9 +567,9 @@ fn render_hints(help: &ModeInfo, max_len: usize) -> String {
                 ],
             );
             if !resize_keys.is_empty() {
-                let styled_keys = style_key_with_modifier(&resize_keys, &help.style.colors);
+                let styled_keys = style_key_with_modifier(&resize_keys, &mode_info.style.colors);
                 parts.extend(styled_keys);
-                let styled_desc = style_description("resize", &help.style.colors);
+                let styled_desc = style_description("resize", &mode_info.style.colors);
                 parts.extend(styled_desc);
             }
 
@@ -600,9 +584,9 @@ fn render_hints(help: &ModeInfo, max_len: usize) -> String {
             );
             if !resize_increase_keys.is_empty() {
                 let styled_keys =
-                    style_key_with_modifier(&resize_increase_keys, &help.style.colors);
+                    style_key_with_modifier(&resize_increase_keys, &mode_info.style.colors);
                 parts.extend(styled_keys);
-                let styled_desc = style_description("increase", &help.style.colors);
+                let styled_desc = style_description("increase", &mode_info.style.colors);
                 parts.extend(styled_desc);
             }
 
@@ -617,9 +601,9 @@ fn render_hints(help: &ModeInfo, max_len: usize) -> String {
             );
             if !resize_decrease_keys.is_empty() {
                 let styled_keys =
-                    style_key_with_modifier(&resize_decrease_keys, &help.style.colors);
+                    style_key_with_modifier(&resize_decrease_keys, &mode_info.style.colors);
                 parts.extend(styled_keys);
-                let styled_desc = style_description("decrease", &help.style.colors);
+                let styled_desc = style_description("decrease", &mode_info.style.colors);
                 parts.extend(styled_desc);
             }
 
@@ -630,9 +614,9 @@ fn render_hints(help: &ModeInfo, max_len: usize) -> String {
                 to_normal_keys.into_iter().take(1).collect()
             };
             if !select_key.is_empty() {
-                let styled_keys = style_key_with_modifier(&select_key, &help.style.colors);
+                let styled_keys = style_key_with_modifier(&select_key, &mode_info.style.colors);
                 parts.extend(styled_keys);
-                let styled_desc = style_description("select", &help.style.colors);
+                let styled_desc = style_description("select", &mode_info.style.colors);
                 parts.extend(styled_desc);
             }
         }
@@ -647,9 +631,9 @@ fn render_hints(help: &ModeInfo, max_len: usize) -> String {
                 ],
             );
             if !move_keys.is_empty() {
-                let styled_keys = style_key_with_modifier(&move_keys, &help.style.colors);
+                let styled_keys = style_key_with_modifier(&move_keys, &mode_info.style.colors);
                 parts.extend(styled_keys);
-                let styled_desc = style_description("move", &help.style.colors);
+                let styled_desc = style_description("move", &mode_info.style.colors);
                 parts.extend(styled_desc);
             }
 
@@ -660,9 +644,9 @@ fn render_hints(help: &ModeInfo, max_len: usize) -> String {
                 to_normal_keys.into_iter().take(1).collect()
             };
             if !select_key.is_empty() {
-                let styled_keys = style_key_with_modifier(&select_key, &help.style.colors);
+                let styled_keys = style_key_with_modifier(&select_key, &mode_info.style.colors);
                 parts.extend(styled_keys);
-                let styled_desc = style_description("select", &help.style.colors);
+                let styled_desc = style_description("select", &mode_info.style.colors);
                 parts.extend(styled_desc);
             }
         }
@@ -675,18 +659,18 @@ fn render_hints(help: &ModeInfo, max_len: usize) -> String {
                 ],
             );
             if !search_keys.is_empty() {
-                let styled_keys = style_key_with_modifier(&search_keys, &help.style.colors);
+                let styled_keys = style_key_with_modifier(&search_keys, &mode_info.style.colors);
                 parts.extend(styled_keys);
-                let styled_desc = style_description("search", &help.style.colors);
+                let styled_desc = style_description("search", &mode_info.style.colors);
                 parts.extend(styled_desc);
             }
 
             let scroll_keys =
                 action_key_group(&keymap, &[&[Action::ScrollDown], &[Action::ScrollUp]]);
             if !scroll_keys.is_empty() {
-                let styled_keys = style_key_with_modifier(&scroll_keys, &help.style.colors);
+                let styled_keys = style_key_with_modifier(&scroll_keys, &mode_info.style.colors);
                 parts.extend(styled_keys);
-                let styled_desc = style_description("scroll", &help.style.colors);
+                let styled_desc = style_description("scroll", &mode_info.style.colors);
                 parts.extend(styled_desc);
             }
 
@@ -695,9 +679,10 @@ fn render_hints(help: &ModeInfo, max_len: usize) -> String {
                 &[&[Action::PageScrollDown], &[Action::PageScrollUp]],
             );
             if !page_scroll_keys.is_empty() {
-                let styled_keys = style_key_with_modifier(&page_scroll_keys, &help.style.colors);
+                let styled_keys =
+                    style_key_with_modifier(&page_scroll_keys, &mode_info.style.colors);
                 parts.extend(styled_keys);
-                let styled_desc = style_description("page", &help.style.colors);
+                let styled_desc = style_description("page", &mode_info.style.colors);
                 parts.extend(styled_desc);
             }
 
@@ -707,17 +692,17 @@ fn render_hints(help: &ModeInfo, max_len: usize) -> String {
             );
             if !half_page_scroll_keys.is_empty() {
                 let styled_keys =
-                    style_key_with_modifier(&half_page_scroll_keys, &help.style.colors);
+                    style_key_with_modifier(&half_page_scroll_keys, &mode_info.style.colors);
                 parts.extend(styled_keys);
-                let styled_desc = style_description("half page", &help.style.colors);
+                let styled_desc = style_description("half page", &mode_info.style.colors);
                 parts.extend(styled_desc);
             }
 
             let edit_keys = single_action_key(&keymap, &[Action::EditScrollback, TO_NORMAL]);
             if !edit_keys.is_empty() {
-                let styled_keys = style_key_with_modifier(&edit_keys, &help.style.colors);
+                let styled_keys = style_key_with_modifier(&edit_keys, &mode_info.style.colors);
                 parts.extend(styled_keys);
-                let styled_desc = style_description("edit", &help.style.colors);
+                let styled_desc = style_description("edit", &mode_info.style.colors);
                 parts.extend(styled_desc);
             }
 
@@ -728,9 +713,9 @@ fn render_hints(help: &ModeInfo, max_len: usize) -> String {
                 to_normal_keys.into_iter().take(1).collect()
             };
             if !select_key.is_empty() {
-                let styled_keys = style_key_with_modifier(&select_key, &help.style.colors);
+                let styled_keys = style_key_with_modifier(&select_key, &mode_info.style.colors);
                 parts.extend(styled_keys);
-                let styled_desc = style_description("select", &help.style.colors);
+                let styled_desc = style_description("select", &mode_info.style.colors);
                 parts.extend(styled_desc);
             }
         }
@@ -743,18 +728,18 @@ fn render_hints(help: &ModeInfo, max_len: usize) -> String {
                 ],
             );
             if !search_keys.is_empty() {
-                let styled_keys = style_key_with_modifier(&search_keys, &help.style.colors);
+                let styled_keys = style_key_with_modifier(&search_keys, &mode_info.style.colors);
                 parts.extend(styled_keys);
-                let styled_desc = style_description("search", &help.style.colors);
+                let styled_desc = style_description("search", &mode_info.style.colors);
                 parts.extend(styled_desc);
             }
 
             let scroll_keys =
                 action_key_group(&keymap, &[&[Action::ScrollDown], &[Action::ScrollUp]]);
             if !scroll_keys.is_empty() {
-                let styled_keys = style_key_with_modifier(&scroll_keys, &help.style.colors);
+                let styled_keys = style_key_with_modifier(&scroll_keys, &mode_info.style.colors);
                 parts.extend(styled_keys);
-                let styled_desc = style_description("scroll", &help.style.colors);
+                let styled_desc = style_description("scroll", &mode_info.style.colors);
                 parts.extend(styled_desc);
             }
 
@@ -763,9 +748,10 @@ fn render_hints(help: &ModeInfo, max_len: usize) -> String {
                 &[&[Action::PageScrollDown], &[Action::PageScrollUp]],
             );
             if !page_scroll_keys.is_empty() {
-                let styled_keys = style_key_with_modifier(&page_scroll_keys, &help.style.colors);
+                let styled_keys =
+                    style_key_with_modifier(&page_scroll_keys, &mode_info.style.colors);
                 parts.extend(styled_keys);
-                let styled_desc = style_description("page", &help.style.colors);
+                let styled_desc = style_description("page", &mode_info.style.colors);
                 parts.extend(styled_desc);
             }
 
@@ -775,25 +761,26 @@ fn render_hints(help: &ModeInfo, max_len: usize) -> String {
             );
             if !half_page_scroll_keys.is_empty() {
                 let styled_keys =
-                    style_key_with_modifier(&half_page_scroll_keys, &help.style.colors);
+                    style_key_with_modifier(&half_page_scroll_keys, &mode_info.style.colors);
                 parts.extend(styled_keys);
-                let styled_desc = style_description("half page", &help.style.colors);
+                let styled_desc = style_description("half page", &mode_info.style.colors);
                 parts.extend(styled_desc);
             }
 
             let search_down_keys = action_key(&keymap, &[Action::Search(SearchDirection::Down)]);
             if !search_down_keys.is_empty() {
-                let styled_keys = style_key_with_modifier(&search_down_keys, &help.style.colors);
+                let styled_keys =
+                    style_key_with_modifier(&search_down_keys, &mode_info.style.colors);
                 parts.extend(styled_keys);
-                let styled_desc = style_description("down", &help.style.colors);
+                let styled_desc = style_description("down", &mode_info.style.colors);
                 parts.extend(styled_desc);
             }
 
             let search_up_keys = action_key(&keymap, &[Action::Search(SearchDirection::Up)]);
             if !search_up_keys.is_empty() {
-                let styled_keys = style_key_with_modifier(&search_up_keys, &help.style.colors);
+                let styled_keys = style_key_with_modifier(&search_up_keys, &mode_info.style.colors);
                 parts.extend(styled_keys);
-                let styled_desc = style_description("up", &help.style.colors);
+                let styled_desc = style_description("up", &mode_info.style.colors);
                 parts.extend(styled_desc);
             }
 
@@ -804,54 +791,54 @@ fn render_hints(help: &ModeInfo, max_len: usize) -> String {
                 to_normal_keys.into_iter().take(1).collect()
             };
             if !select_key.is_empty() {
-                let styled_keys = style_key_with_modifier(&select_key, &help.style.colors);
+                let styled_keys = style_key_with_modifier(&select_key, &mode_info.style.colors);
                 parts.extend(styled_keys);
-                let styled_desc = style_description("select", &help.style.colors);
+                let styled_desc = style_description("select", &mode_info.style.colors);
                 parts.extend(styled_desc);
             }
         }
         InputMode::Session => {
             let detach_keys = action_key(&keymap, &[Action::Detach]);
             if !detach_keys.is_empty() {
-                let styled_keys = style_key_with_modifier(&detach_keys, &help.style.colors);
+                let styled_keys = style_key_with_modifier(&detach_keys, &mode_info.style.colors);
                 parts.extend(styled_keys);
-                let styled_desc = style_description("detach", &help.style.colors);
+                let styled_desc = style_description("detach", &mode_info.style.colors);
                 parts.extend(styled_desc);
             }
 
             let manager_keys = session_manager_key(&keymap);
             if !manager_keys.is_empty() {
-                let styled_keys = style_key_with_modifier(&manager_keys, &help.style.colors);
+                let styled_keys = style_key_with_modifier(&manager_keys, &mode_info.style.colors);
                 parts.extend(styled_keys);
-                let styled_desc = style_description("manager", &help.style.colors);
+                let styled_desc = style_description("manager", &mode_info.style.colors);
                 parts.extend(styled_desc);
             }
 
             let config_keys = configuration_key(&keymap);
             if !config_keys.is_empty() {
-                let styled_keys = style_key_with_modifier(&config_keys, &help.style.colors);
+                let styled_keys = style_key_with_modifier(&config_keys, &mode_info.style.colors);
                 parts.extend(styled_keys);
-                let styled_desc = style_description("config", &help.style.colors);
+                let styled_desc = style_description("config", &mode_info.style.colors);
                 parts.extend(styled_desc);
             }
 
             let plugin_keys = plugin_manager_key(&keymap);
             if !plugin_keys.is_empty() {
-                let styled_keys = style_key_with_modifier(&plugin_keys, &help.style.colors);
+                let styled_keys = style_key_with_modifier(&plugin_keys, &mode_info.style.colors);
                 parts.extend(styled_keys);
-                let styled_desc = style_description("plugins", &help.style.colors);
+                let styled_desc = style_description("plugins", &mode_info.style.colors);
                 parts.extend(styled_desc);
             }
 
             let about_keys = about_key(&keymap);
             if !about_keys.is_empty() {
-                let styled_keys = style_key_with_modifier(&about_keys, &help.style.colors);
+                let styled_keys = style_key_with_modifier(&about_keys, &mode_info.style.colors);
                 parts.extend(styled_keys);
-                let styled_desc = style_description("about", &help.style.colors);
+                let styled_desc = style_description("about", &mode_info.style.colors);
                 parts.extend(styled_desc);
             }
 
-            let base_mode = help.base_mode;
+            let base_mode = mode_info.base_mode;
             let to_basemode_keys = base_mode
                 .map(|b| action_key(&keymap, &[Action::SwitchToMode(b)]))
                 .unwrap_or_else(|| action_key(&keymap, &[TO_NORMAL]));
@@ -861,18 +848,18 @@ fn render_hints(help: &ModeInfo, max_len: usize) -> String {
                 to_basemode_keys.into_iter().take(1).collect()
             };
             if !select_key.is_empty() {
-                let styled_keys = style_key_with_modifier(&select_key, &help.style.colors);
+                let styled_keys = style_key_with_modifier(&select_key, &mode_info.style.colors);
                 parts.extend(styled_keys);
-                let styled_desc = style_description("select", &help.style.colors);
+                let styled_desc = style_description("select", &mode_info.style.colors);
                 parts.extend(styled_desc);
             }
         }
         _ => {
             let keys = action_key(&keymap, &[Action::SwitchToMode(InputMode::Normal)]);
             if !keys.is_empty() {
-                let styled_keys = style_key_with_modifier(&keys, &help.style.colors);
+                let styled_keys = style_key_with_modifier(&keys, &mode_info.style.colors);
                 parts.extend(styled_keys);
-                let styled_desc = style_description("normal", &help.style.colors);
+                let styled_desc = style_description("normal", &mode_info.style.colors);
                 parts.extend(styled_desc);
             }
         }
