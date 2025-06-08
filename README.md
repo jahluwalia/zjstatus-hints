@@ -23,7 +23,7 @@ First, install and configure [zjstatus](https://github.com/dj95/zjstatus). Then,
 plugins {
     zjstatus-hints location="https://github.com/b0o/zjstatus-hints/releases/latest/download/zjstatus-hints.wasm" {
         // Maximum number of characters to display
-        max_length "0" // 0 = unlimited
+        max_length 0 // 0 = unlimited
         // String to append when truncated
         overflow_str "..." // default
         // Name of the pipe for zjstatus integration
@@ -31,7 +31,7 @@ plugins {
         // Hide hints in base mode (a.k.a. default mode)
         // E.g. if you have set default_mode to "locked", then
         // you can hide hints in the locked mode by setting this to true
-        hide_in_base_mode "false" // default
+        hide_in_base_mode false // default
     }
 }
 
