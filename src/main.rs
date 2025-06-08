@@ -1,5 +1,5 @@
 use ansi_term::{
-    ANSIString,
+    ANSIString, ANSIStrings,
     Colour::{Fixed, RGB},
     Style,
 };
@@ -11,11 +11,13 @@ use zellij_tile_utils::palette_match;
 
 #[derive(Default)]
 struct State {
+    initialized: bool,
     pipe_name: String,
     mode_info: ModeInfo,
     base_mode_is_locked: bool,
     max_length: usize,
     overflow_str: String,
+    hide_in_base_mode: bool,
 }
 
 register_plugin!(State);
@@ -98,6 +100,9 @@ fn get_common_modifiers(mut key_bindings: Vec<&KeyWithModifier>) -> Vec<KeyModif
 
 impl ZellijPlugin for State {
     fn load(&mut self, configuration: BTreeMap<String, String>) {
+        self.initialized = false;
+
+        // TODO: configuration validation
         self.max_length = configuration
             .get("max_length")
             .and_then(|s| s.parse().ok())
@@ -110,6 +115,10 @@ impl ZellijPlugin for State {
             .get("pipe_name")
             .cloned()
             .unwrap_or_else(|| DEFAULT_PIPE_NAME.to_string());
+        self.hide_in_base_mode = configuration
+            .get("hide_in_base_mode")
+            .map(|s| s.to_lowercase().parse::<bool>().unwrap_or(false))
+            .unwrap_or(false);
 
         request_permission(&[
             PermissionType::ReadApplicationState,
@@ -117,17 +126,11 @@ impl ZellijPlugin for State {
         ]);
 
         set_selectable(false);
-        subscribe(&[
-            EventType::ModeUpdate,
-            EventType::TabUpdate,
-            EventType::CopyToClipboard,
-            EventType::InputReceived,
-            EventType::SystemClipboardFailure,
-        ]);
+        subscribe(&[EventType::ModeUpdate, EventType::SessionUpdate]);
     }
 
     fn update(&mut self, event: Event) -> bool {
-        let mut should_render = false;
+        let mut should_render = !self.initialized;
         if let Event::ModeUpdate(mode_info) = event {
             if self.mode_info != mode_info {
                 should_render = true;
@@ -138,22 +141,38 @@ impl ZellijPlugin for State {
         should_render
     }
 
-    fn render(&mut self, _rows: usize, cols: usize) {
-        // TODO: add config option to determine whether to show hints in locked mode
-        let message = render_hints(&self.mode_info, cols);
-        if !message.is_empty() {
-            let visible_len = calculate_visible_length(&message);
-            let output = if self.max_length > 0 && visible_len > self.max_length {
-                truncate_ansi_string(&message, &self.overflow_str, self.max_length)
+    fn render(&mut self, _rows: usize, _cols: usize) {
+        let mode_info = &self.mode_info;
+        let output = if !(self.hide_in_base_mode && Some(mode_info.mode) == mode_info.base_mode) {
+            let keymap = get_keymap_for_mode(mode_info);
+            let parts = render_hints_for_mode(mode_info.mode, &keymap, &mode_info.style.colors);
+
+            let ansi_strings = ANSIStrings(&parts);
+            let formatted = format!(" {}", ansi_strings);
+
+            let visible_len = calculate_visible_length(&formatted);
+            if self.max_length > 0 && visible_len > self.max_length {
+                truncate_ansi_string(&formatted, &self.overflow_str, self.max_length)
             } else {
-                message.to_string()
-            };
-            pipe_message_to_plugin(MessageToPlugin::new("pipe").with_payload(format!(
-                "zjstatus::pipe::pipe_{}::{}",
-                self.pipe_name, output
-            )));
-            print!("{}", output);
+                formatted.to_string()
+            }
+        } else {
+            String::new()
+        };
+
+        // HACK: Because we're not sure when zjstatus will be ready to receive messages,
+        // we'll repeatedly send messages until the user has switched to a different mode,
+        // at which point we'll assume that zjstatus has been initialized. The render function
+        // does not seem to be called too frequently, so this should be fine.
+        if !output.is_empty() && Some(mode_info.mode) != mode_info.base_mode {
+            self.initialized = true;
         }
+
+        pipe_message_to_plugin(MessageToPlugin::new("pipe").with_payload(format!(
+            "zjstatus::pipe::pipe_{}::{}",
+            self.pipe_name, output
+        )));
+        print!("{}", output);
     }
 }
 
@@ -673,25 +692,5 @@ fn get_keymap_for_mode(mode_info: &ModeInfo) -> Vec<(KeyWithModifier, Vec<Action
         InputMode::Search => mode_info.get_keybinds_for_mode(InputMode::Search),
         InputMode::Session => mode_info.get_keybinds_for_mode(InputMode::Session),
         _ => mode_info.get_mode_keybinds(),
-    }
-}
-
-fn render_hints(mode_info: &ModeInfo, max_len: usize) -> String {
-    let keymap = get_keymap_for_mode(mode_info);
-    let parts = render_hints_for_mode(mode_info.mode, &keymap, &mode_info.style.colors);
-
-    if parts.is_empty() {
-        return String::new();
-    }
-
-    use ansi_term::{unstyled_len, ANSIStrings};
-    let ansi_strings = ANSIStrings(&parts);
-    let formatted = format!(" {}", ansi_strings);
-    let len = 1 + unstyled_len(&ansi_strings);
-
-    if len <= max_len {
-        formatted
-    } else {
-        String::new()
     }
 }

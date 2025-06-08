@@ -22,9 +22,16 @@ First, install and configure [zjstatus](https://github.com/dj95/zjstatus). Then,
 ```kdl
 plugins {
     zjstatus-hints location="https://github.com/b0o/zjstatus-hints/releases/latest/download/zjstatus-hints.wasm" {
+        // Maximum number of characters to display
         max_length "0" // 0 = unlimited
+        // String to append when truncated
         overflow_str "..." // default
+        // Name of the pipe for zjstatus integration
         pipe_name "zjstatus_hints" // default
+        // Hide hints in base mode (a.k.a. default mode)
+        // E.g. if you have set default_mode to "locked", then
+        // you can hide hints in the locked mode by setting this to true
+        hide_in_base_mode "false" // default
     }
 }
 
@@ -62,11 +69,12 @@ layout {
 - `max_length`: Maximum number of characters to display (default: 0 = unlimited)
 - `overflow_str`: String to append when truncated (default: "...")
 - `pipe_name`: Name of the pipe for zjstatus integration (default: "zjstatus_hints")
+- `hide_in_base_mode`: Hide hints in base mode (a.k.a. default mode) (default: false)
 
 ## TODO
 
 - [ ] configurable colors/formatting
-- [ ] mode-specific configuration, e.g. disable in locked mode
+- [ ] more advanced mode-specific configuration
 - [ ] improved handling of long outputs
 - [ ] ability to enable/disable specific hints
 
