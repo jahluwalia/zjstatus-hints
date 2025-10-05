@@ -41,33 +41,32 @@ type ActionSequenceLabel = (&'static [Action], &'static str);
 const NORMAL_MODE_ACTIONS: &[ActionLabel] = &[
     (Action::SwitchToMode(InputMode::Pane), "pane"),
     (Action::SwitchToMode(InputMode::Tab), "tab"),
-    (Action::SwitchToMode(InputMode::Resize), "resize"),
-    (Action::SwitchToMode(InputMode::Move), "move"),
+    (Action::SwitchToMode(InputMode::Resize), "n-resize"),
+    (Action::SwitchToMode(InputMode::Move), "h-move"),
     (Action::SwitchToMode(InputMode::Scroll), "scroll"),
     (Action::SwitchToMode(InputMode::Search), "search"),
-    (Action::SwitchToMode(InputMode::Session), "session"),
+    (Action::SwitchToMode(InputMode::Session), "o-session"),
     (Action::Quit, "quit"),
 ];
 
 const PANE_MODE_ACTION_SEQUENCES: &[ActionSequenceLabel] = &[
     (&[Action::NewPane(None, None, false), TO_NORMAL], "new"),
-    (&[Action::CloseFocus, TO_NORMAL], "close"),
-    (&[Action::ToggleFocusFullscreen, TO_NORMAL], "fullscreen"),
+    (&[Action::CloseFocus, TO_NORMAL], "x"),
+    (&[Action::ToggleFocusFullscreen, TO_NORMAL], "full"),
     (&[Action::ToggleFloatingPanes, TO_NORMAL], "float"),
-    (&[Action::TogglePaneEmbedOrFloating, TO_NORMAL], "embed"),
     (
         &[
             Action::NewPane(Some(Direction::Right), None, false),
             TO_NORMAL,
         ],
-        "split right",
+        "→",
     ),
     (
         &[
             Action::NewPane(Some(Direction::Down), None, false),
             TO_NORMAL,
         ],
-        "split down",
+        "↓",
     ),
 ];
 
@@ -370,7 +369,7 @@ fn style_key_with_modifier(
                 .fg(contrasting_fg)
                 .on(saturated_bg)
                 .bold()
-                .paint(format!(" {} + ", modifier_str)),
+                .paint(format!(" {}-", modifier_str.to_lowercase())),
         );
     } else {
         styled_parts.push(Style::new().fg(contrasting_fg).on(saturated_bg).paint(" "));
@@ -399,14 +398,81 @@ fn style_key_with_modifier(
     styled_parts
 }
 
-fn style_description(description: &str, palette: &Styling) -> Vec<ANSIString<'static>> {
+fn style_description(description: &str, palette: &Styling, keys: &[KeyWithModifier]) -> Vec<ANSIString<'static>> {
     let less_saturated_bg = palette_match!(palette.text_unselected.background);
     let contrasting_fg = palette_match!(palette.text_unselected.base);
+    let highlight_fg = palette_match!(palette.ribbon_selected.base);
 
-    vec![Style::new()
+    let mut parts = vec![];
+
+    parts.push(Style::new()
         .fg(contrasting_fg)
         .on(less_saturated_bg)
-        .paint(format!(" {} ", description))]
+        .paint(" "));
+
+    if !description.is_empty() {
+        // Get the key letter to highlight
+        let key_char = if !keys.is_empty() {
+            format!("{}", keys[0].bare_key).to_lowercase().chars().next()
+        } else {
+            None
+        };
+
+        // Find the position of the key letter in the description
+        let highlight_pos = if let Some(kc) = key_char {
+            description.to_lowercase().find(kc)
+        } else {
+            Some(0) // Default to first character if no key
+        };
+
+        if let Some(pos) = highlight_pos {
+            // Split description into parts: before, highlighted char, after
+            let chars: Vec<char> = description.chars().collect();
+
+            if pos > 0 {
+                let before: &'static str = Box::leak(
+                    chars[..pos].iter().collect::<String>().into_boxed_str()
+                );
+                parts.push(Style::new()
+                    .fg(contrasting_fg)
+                    .on(less_saturated_bg)
+                    .paint(before));
+            }
+
+            let highlighted: &'static str = Box::leak(
+                chars[pos].to_string().into_boxed_str()
+            );
+            parts.push(Style::new()
+                .fg(highlight_fg)
+                .on(less_saturated_bg)
+                .bold()
+                .paint(highlighted));
+
+            if pos + 1 < chars.len() {
+                let after: &'static str = Box::leak(
+                    chars[pos + 1..].iter().collect::<String>().into_boxed_str()
+                );
+                parts.push(Style::new()
+                    .fg(contrasting_fg)
+                    .on(less_saturated_bg)
+                    .paint(after));
+            }
+        } else {
+            // Key letter not in description, just render description normally
+            let text: &'static str = Box::leak(description.to_string().into_boxed_str());
+            parts.push(Style::new()
+                .fg(contrasting_fg)
+                .on(less_saturated_bg)
+                .paint(text));
+        }
+    }
+
+    parts.push(Style::new()
+        .fg(contrasting_fg)
+        .on(less_saturated_bg)
+        .paint(" "));
+
+    parts
 }
 
 fn plugin_key(
@@ -443,9 +509,18 @@ fn add_hint(
     if !keys.is_empty() {
         let styled_keys = style_key_with_modifier(keys, colors);
         parts.extend(styled_keys);
-        let styled_desc = style_description(description, colors);
+        let styled_desc = style_description(description, colors, keys);
         parts.extend(styled_desc);
     }
+}
+
+fn add_description_only(
+    parts: &mut Vec<ANSIString<'static>>,
+    description: &str,
+    colors: &Styling,
+) {
+    let styled_desc = style_description(description, colors, &[]);
+    parts.extend(styled_desc);
 }
 
 fn render_hints_for_mode(
@@ -458,9 +533,34 @@ fn render_hints_for_mode(
 
     match mode {
         InputMode::Normal => {
-            for (action, label) in NORMAL_MODE_ACTIONS {
-                let keys = find_keys_for_actions(keymap, &[action.clone()], true);
-                add_hint(&mut parts, &keys, label, colors);
+            // Collect all keys to find common modifier
+            let all_keys: Vec<KeyWithModifier> = NORMAL_MODE_ACTIONS
+                .iter()
+                .flat_map(|(action, _)| find_keys_for_actions(keymap, &[action.clone()], true))
+                .collect();
+
+            if !all_keys.is_empty() {
+                let common_modifiers = get_common_modifiers(all_keys.iter().collect());
+
+                if !common_modifiers.is_empty() {
+                    let saturated_bg = palette_match!(colors.ribbon_unselected.background);
+                    let contrasting_fg = palette_match!(colors.ribbon_unselected.base);
+                    let modifier_str = format_modifier_string(&common_modifiers);
+
+                    parts.push(Style::new().paint(" "));
+                    parts.push(
+                        Style::new()
+                            .fg(contrasting_fg)
+                            .on(saturated_bg)
+                            .bold()
+                            .paint(format!(" {} ", modifier_str.to_lowercase())),
+                    );
+                }
+
+                // Add labels without keys
+                for (_action, label) in NORMAL_MODE_ACTIONS {
+                    add_description_only(&mut parts, label, colors);
+                }
             }
         }
         InputMode::Pane => {
