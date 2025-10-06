@@ -277,10 +277,11 @@ fn find_keys_for_actions(
                 } else {
                     None
                 }
-            } else if key_actions.iter().next() == target_actions.iter().next() {
-                Some(key.clone())
             } else {
-                None
+                match (key_actions.iter().next(), target_actions.iter().next()) {
+                    (Some(a), Some(b)) if a.shallow_eq(b) => Some(key.clone()),
+                    _ => None,
+                }
             }
         })
         .collect()
@@ -533,13 +534,25 @@ fn render_hints_for_mode(
 
     match mode {
         InputMode::Normal => {
-            // Collect all keys to find common modifier
-            let all_keys: Vec<KeyWithModifier> = NORMAL_MODE_ACTIONS
+            // Collect actions that have keybindings
+            let actions_with_keys: Vec<(Action, &'static str, Vec<KeyWithModifier>)> = NORMAL_MODE_ACTIONS
                 .iter()
-                .flat_map(|(action, _)| find_keys_for_actions(keymap, &[action.clone()], true))
+                .filter_map(|(action, label)| {
+                    let keys = find_keys_for_actions(keymap, &[action.clone()], true);
+                    if !keys.is_empty() {
+                        Some((action.clone(), *label, keys))
+                    } else {
+                        None
+                    }
+                })
                 .collect();
 
-            if !all_keys.is_empty() {
+            if !actions_with_keys.is_empty() {
+                let all_keys: Vec<KeyWithModifier> = actions_with_keys
+                    .iter()
+                    .flat_map(|(_, _, keys)| keys.clone())
+                    .collect();
+
                 let common_modifiers = get_common_modifiers(all_keys.iter().collect());
 
                 if !common_modifiers.is_empty() {
@@ -557,8 +570,8 @@ fn render_hints_for_mode(
                     );
                 }
 
-                // Add labels without keys
-                for (_action, label) in NORMAL_MODE_ACTIONS {
+                // Add labels only for actions with keybindings
+                for (_, label, _) in actions_with_keys {
                     add_description_only(&mut parts, label, colors);
                 }
             }
